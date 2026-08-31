@@ -1,0 +1,29 @@
+{
+  "name": "dursel-web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/dursel-web",
+  "projectType": "application",
+  "tags": ["type:app", "scope:dursel"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-web", "command": "npx next build" }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-web", "command": "npx next dev" }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": { "lintFilePatterns": ["apps/dursel-web/**/*.ts", "apps/dursel-web/**/*.tsx"] }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": { "jestConfig": "apps/dursel-web/jest.config.ts" }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-web", "command": "npx wrangler deploy" }
+    }
+  }
+}

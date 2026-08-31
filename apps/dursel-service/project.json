@@ -1,0 +1,53 @@
+{
+  "name": "dursel-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/dursel-service/src",
+  "projectType": "application",
+  "tags": ["type:app", "scope:dursel"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-service", "command": "npx wrangler dev" }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": { "lintFilePatterns": ["apps/dursel-service/**/*.ts"] }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": { "jestConfig": "apps/dursel-service/jest.config.ts" }
+    },
+    "setup": {
+      "executor": "nx:run-commands",
+      "options": { "commands": ["graphql-codegen --config ./apps/dursel-service/codegen.yml"] }
+    },
+    "drizzle:generate": {
+      "executor": "nx:run-commands",
+      "options": { "command": "drizzle-kit generate --config=apps/dursel-service/drizzle.config.ts" }
+    },
+    "drizzle:studio": {
+      "executor": "nx:run-commands",
+      "options": { "command": "drizzle-kit studio --port 3006 --verbose --config=apps/dursel-service/drizzle.config.ts" }
+    },
+    "execute-d1-testing": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-service", "command": "npx wrangler d1 migrations apply dursel-db --env test --remote" }
+    },
+    "execute-d1-prod": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-service", "command": "npx wrangler d1 migrations apply dursel-db --env production --remote" }
+    },
+    "deploy-test": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-service", "command": "npx wrangler deploy --env test" }
+    },
+    "deploy-prod": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/dursel-service", "command": "npx wrangler deploy --env production" }
+    },
+    "schema-print": {
+      "executor": "nx:run-commands",
+      "options": { "command": "npx tsx apps/dursel-service/src/scripts/print-schema.ts" }
+    }
+  }
+}

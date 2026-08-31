@@ -1,0 +1,15 @@
+# Paths are relative to the monorepo root — see image_build_context in wrangler.jsonc.
+node_modules
+**/node_modules
+**/.next
+.git
+.nx
+dist
+coverage
+tmp
+**/renders
+**/.wrangler
+**/.dev.vars
+**/.env*
+!apps/dursel-web/.env.production
+.claude

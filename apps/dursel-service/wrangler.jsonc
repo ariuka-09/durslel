@@ -1,0 +1,46 @@
+{
+  "name": "dursel-service",
+  "account_id": "8341d4b31e574cb9873ce1bb80671685",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "main": "src/index.ts",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dursel-db",
+      "database_id": "f2c1d8e4-71cc-4c7a-854e-2cde86fcf32d",
+      // drizzle-kit writes migrations here and `wrangler d1 migrations apply` reads the same
+      // folder, so there is one set of .sql files rather than a drizzle copy and a wrangler copy.
+      "migrations_dir": "drizzle"
+    }
+  ],
+
+  // Both environments point at the same database today. The split exists so that giving
+  // production its own is a database_id change here rather than a restructure.
+  "env": {
+    "test": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dursel-db",
+          "database_id": "f2c1d8e4-71cc-4c7a-854e-2cde86fcf32d",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    },
+    "production": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dursel-db",
+          "database_id": "f2c1d8e4-71cc-4c7a-854e-2cde86fcf32d",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    }
+  },
+
+  "observability": { "enabled": true }
+}

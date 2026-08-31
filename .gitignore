@@ -1,0 +1,24 @@
+node_modules
+dist
+tmp
+coverage
+.nx
+
+# next
+.next/
+out/
+next-env.d.ts
+
+# env — .env.production is committed on purpose (public Clerk key, needed at image build)
+.env*
+!.env.production
+.dev.vars
+
+# wrangler
+.wrangler/
+
+# rendered jobs
+renders/
+
+*.tsbuildinfo
+.DS_Store
