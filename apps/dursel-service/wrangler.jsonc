@@ -42,11 +42,10 @@
     }
   },
 
-  // Not a secret — just the address of dursel-web's renderer endpoint. The secret that makes a
-  // call to it legitimate is CLERK_SECRET_KEY, which both services already hold.
-  "vars": {
-    "RENDERER_URL": "https://dursel-web.ariuntuguldur3.workers.dev/api/render"
-  },
+  // A binding rather than a URL. Both Workers sit on workers.dev, and Cloudflare refuses a plain
+  // fetch from one Worker to another on the same zone — that is error 1042, which is what a
+  // hostname here produced. A service binding routes the request internally and sidesteps it.
+  "services": [{ "binding": "RENDERER", "service": "dursel-web" }],
 
   "observability": { "enabled": true }
 }

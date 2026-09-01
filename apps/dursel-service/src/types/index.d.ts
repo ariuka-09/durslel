@@ -14,8 +14,11 @@ interface Env {
    */
   CLERK_SECRET_KEY: string;
 
-  /** Where startRender sends work. The renderer endpoint on dursel-web's container. */
-  RENDERER_URL: string;
+  /**
+   * dursel-web, bound as a service. Worker-to-Worker on the same zone cannot go over a hostname
+   * (Cloudflare error 1042), so the renderer is reached through this instead of a URL.
+   */
+  RENDERER: Fetcher;
 }
 
 interface Context {

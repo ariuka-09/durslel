@@ -6,7 +6,7 @@ export const info = {} as GraphQLResolveInfo;
 const env = {
   DB: {} as D1Database,
   CLERK_SECRET_KEY: 'sk_test_helper',
-  RENDERER_URL: 'https://renderer.test/api/render',
+  RENDERER: { fetch: async () => new Response(null, { status: 202 }) } as unknown as Fetcher,
 };
 
 /**
