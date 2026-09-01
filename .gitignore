@@ -22,3 +22,6 @@ renders/
 
 *.tsbuildinfo
 .DS_Store
+
+# wrangler bulk-secret payload — real values, never committed
+secrets.json

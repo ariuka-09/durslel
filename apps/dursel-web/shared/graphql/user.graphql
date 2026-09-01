@@ -1,0 +1,17 @@
+query Me {
+  me {
+    id
+    firstName
+    lastName
+    email
+  }
+}
+
+mutation UpsertUser($input: UpsertUserInput!) {
+  upsertUser(input: $input) {
+    id
+    firstName
+    lastName
+    email
+  }
+}

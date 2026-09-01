@@ -3,13 +3,26 @@ import { GraphQLResolveInfo } from 'graphql';
 
 export const info = {} as GraphQLResolveInfo;
 
-const env = { DB: {} as D1Database, CLERK_SECRET_KEY: 'sk_test_helper' };
+const env = {
+  DB: {} as D1Database,
+  CLERK_SECRET_KEY: 'sk_test_helper',
+  RENDERER_URL: 'https://renderer.test/api/render',
+};
+
+/**
+ * Runs the handed-off work inline instead of deferring it, so a spec can await what startRender
+ * kicked off rather than racing it.
+ */
+export const waited: Promise<unknown>[] = [];
+const waitUntil = (promise: Promise<unknown>) => {
+  waited.push(promise);
+};
 
 /** A signed-in caller. Every resolver here scopes its work to this id. */
-export const ctx: Context = { env, userId: 'user_owner' };
+export const ctx: Context = { env, userId: 'user_owner', waitUntil };
 
 /** Nobody signed in — what an unauthenticated request produces. */
-export const anonCtx: Context = { env, userId: null };
+export const anonCtx: Context = { env, userId: null, waitUntil };
 
 export const render = {
   id: 'render1',
@@ -51,6 +64,10 @@ const fakeDb = (rows: unknown[]) => {
 
 export const returning = (rows: unknown[]) => {
   written.length = 0;
+  waited.length = 0;
+  // Call history does not reset between tests on its own, so without this a spec asserting that
+  // a resolver never reached the database would be reading the previous test's call.
+  jest.mocked(drizzleProvider).mockClear();
 
   return jest.mocked(drizzleProvider).mockReturnValue(fakeDb(rows));
 };

@@ -1,8 +1,6 @@
 import { AwsClient } from "aws4fetch";
-import { createReadStream } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
 
 /**
  * Where finished renders live.
@@ -89,50 +87,5 @@ export async function publishJob(
       // A missing optional artifact must not fail a render that already succeeded.
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
-  }
-}
-
-export interface StoredVideo {
-  stream: ReadableStream;
-  size: number | null;
-}
-
-/** Read a job's video back — from R2 when configured, else from the local render folder. */
-export async function getVideo(jobId: string): Promise<StoredVideo | null> {
-  if (usingR2) {
-    const res = await aws().fetch(url(jobKey(jobId, "out.mp4")));
-    if (!res.ok || !res.body) return null;
-    const len = res.headers.get("content-length");
-    return { stream: res.body, size: len ? Number(len) : null };
-  }
-
-  const file = path.join(RENDERS_DIR, jobId, "out.mp4");
-  try {
-    const { size } = await stat(file);
-    return {
-      stream: Readable.toWeb(createReadStream(file)) as unknown as ReadableStream,
-      size,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * One of a job's small text artifacts — prompt.txt, scene.py, manim.log. Null when it was
- * never written, which is normal for an older job that predates a given artifact.
- */
-export async function getJobText(
-  jobId: string,
-  name: string,
-): Promise<string | null> {
-  if (usingR2) {
-    const res = await aws().fetch(url(jobKey(jobId, name)));
-    return res.ok ? await res.text() : null;
-  }
-  try {
-    return await readFile(path.join(RENDERS_DIR, jobId, name), "utf8");
-  } catch {
-    return null;
   }
 }

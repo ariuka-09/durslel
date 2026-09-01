@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import { index, int, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { nanoid } from 'nanoid';
 
+import { RenderStatus } from '@/types/generated';
+
 import { userTable } from './user.schema';
 
 /**
@@ -15,8 +17,8 @@ import { userTable } from './user.schema';
  * `url` is derivable from `jobId` today, and is stored anyway: it is what was actually handed to
  * the user, so a later change to how videos are served cannot silently invalidate old rows.
  *
- * This table records renders that succeeded. A failed job leaves its trace in storage and in the
- * render log, not here — there is no video to list, watch or share.
+ * Rows are written when a render is requested rather than when it completes, so a job in flight
+ * and a job that failed are both visible. `status` says which.
  */
 export const renderTable = sqliteTable(
   'renders',
@@ -28,7 +30,21 @@ export const renderTable = sqliteTable(
 
     jobId: text('job_id').notNull().unique(),
     title: text('title').notNull(),
-    url: text('url').notNull(),
+
+    /**
+     * Null until the render finishes. A row is created the moment one is requested, so the UI has
+     * something to show a progress bar against; the video only exists at the end.
+     */
+    url: text('url'),
+
+    /**
+     * PENDING while manim runs, then OK or FAILED. This is what the client polls on — without it
+     * a caller cannot tell a render still working from one that died.
+     */
+    status: text('status').$type<RenderStatus>().default(RenderStatus.Pending).notNull(),
+
+    /** Why it failed, when it did. Null on every other status. */
+    error: text('error'),
 
     creatorId: text('creator_id')
       .notNull()

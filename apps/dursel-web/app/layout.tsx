@@ -1,4 +1,6 @@
 import { ClerkProvider } from "@clerk/nextjs";
+
+import { ApolloClientProvider } from "@/shared/providers/ApolloProvider";
 import type { Metadata } from "next";
 import { EB_Garamond, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -32,7 +34,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         lang="en"
         className={`${display.variable} ${mono.variable} h-full antialiased`}
       >
-        <body className="min-h-full flex flex-col">{children}</body>
+        {/* Inside ClerkProvider: the Apollo auth link reads the session through useAuth, so it
+            has to sit below the thing that supplies it. */}
+        <body className="min-h-full flex flex-col">
+          <ApolloClientProvider>{children}</ApolloClientProvider>
+        </body>
       </html>
     </ClerkProvider>
   );

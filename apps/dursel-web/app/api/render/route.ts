@@ -1,216 +1,143 @@
-import { auth } from "@clerk/nextjs/server";
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { RenderError } from "@/lib/errors";
 import { generateScene, type Attempt } from "@/lib/generate";
-import { extractSceneClass, renderScene } from "@/lib/render";
 import { graphqlAsService } from "@/lib/graphql";
-import { makeTitle } from "@/lib/jobs";
+import { extractSceneClass, renderScene } from "@/lib/render";
 import { publishJob, RENDERS_DIR } from "@/lib/storage";
 
 const MAX_ATTEMPTS = 2;
 
-const CREATE_RENDER = `
-  mutation CreateRender($input: CreateRenderInput!) {
-    createRender(input: $input) { id }
+const COMPLETE_RENDER = `
+  mutation CompleteRender($jobId: String!, $input: CompleteRenderInput!) {
+    completeRender(jobId: $jobId, input: $input) { id }
   }
 `;
 
+/**
+ * The renderer. Not a browser endpoint.
+ *
+ * manim needs a subprocess, a filesystem and up to three minutes, none of which a Worker has — so
+ * it runs here, in the container, and dursel-service hands it work. Nothing in the browser calls
+ * this: the app talks only to GraphQL, and the row this job belongs to already exists as PENDING
+ * before the request arrives.
+ *
+ * Authenticated with the Clerk secret both services hold. Without that check this would be an
+ * open "execute model-written Python" endpoint on the public internet.
+ */
 export async function POST(request: Request) {
-  // Renders cost real CPU and land in this user's history — signed in or nothing.
-  const { userId } = await auth();
-  if (!userId) return new Response("unauthorized", { status: 401 });
-
-  const { prompt } = (await request.json()) as { prompt?: string };
-  if (!prompt?.trim()) {
-    return Response.json({ error: "prompt is required" }, { status: 400 });
+  const secret = process.env.CLERK_SECRET_KEY;
+  if (!secret || request.headers.get("X-Dursel-Service") !== secret) {
+    return new Response("unauthorized", { status: 401 });
   }
 
+  const { jobId, prompt, userId } = (await request.json()) as {
+    jobId?: string;
+    prompt?: string;
+    userId?: string;
+  };
+  if (!jobId || !prompt || !userId) {
+    return new Response("jobId, prompt and userId are required", { status: 400 });
+  }
+  // jobId becomes a path segment and an R2 key.
+  if (!/^[A-Za-z0-9-]+$/.test(jobId)) {
+    return new Response("bad jobId", { status: 400 });
+  }
+
+  // Accepted, not awaited. The container is a long-lived Node process, so the work outlives this
+  // response — which is the point: the caller is a Worker that must not sit open for minutes.
+  void run(jobId, prompt, userId).catch(() => undefined);
+
+  return new Response(null, { status: 202 });
+}
+
+async function run(jobId: string, prompt: string, userId: string): Promise<void> {
   const startedAt = Date.now();
-  const jobId = makeJobId(prompt);
   const jobDir = path.join(RENDERS_DIR, jobId);
   await mkdir(jobDir, { recursive: true });
   await writeFile(path.join(jobDir, "prompt.txt"), prompt, "utf8");
 
-  const encoder = new TextEncoder();
+  let previous: Attempt | undefined;
+  let lastError = "";
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      let open = true;
-      const send = (event: string, data: unknown) => {
-        if (!open) return;
-        try {
-          controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-          );
-        } catch {
-          open = false;
-        }
-      };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const generated = await generateScene(prompt, attempt, previous);
+    if ("error" in generated) {
+      // An API-level failure will not fix itself on a retry.
+      await complete(jobId, userId, {
+        status: "FAILED",
+        error: generated.error.message,
+        attempts: attempt,
+        durationMs: Date.now() - startedAt,
+      });
+      return;
+    }
 
-      const errors: RenderError[] = [];
-      let previous: Attempt | undefined;
+    const { code } = generated;
+    const attemptDir = path.join(jobDir, `attempt-${attempt}`);
+    await mkdir(attemptDir, { recursive: true });
 
-      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        send("attempt", { n: attempt, of: MAX_ATTEMPTS });
+    const outcome = await renderScene(attemptDir, code, attempt, () => undefined);
 
-        const generated = await generateScene(prompt, attempt, previous);
-        if ("error" in generated) {
-          // An API-level failure won't fix itself on a retry — stop and show it.
-          errors.push(generated.error);
-          send("error", generated.error);
-          // Record it too: a job that dies here still has to leave a trace on disk, or it
-          // looks like it is running forever.
-          await writeMeta(jobDir, {
-            jobId,
-            prompt,
-            status: "failed",
-            attempts: attempt,
-            errors,
-          });
-          send("failed", { jobId, attempts: attempt });
-          break;
-        }
+    if (outcome.ok) {
+      await writeFile(path.join(attemptDir, "manim.log"), outcome.result.log, "utf8");
+      // The winning attempt's artifacts are copied up to the job root, so nothing downstream has
+      // to know which attempt succeeded.
+      await copyFile(outcome.result.video, path.join(jobDir, "out.mp4"));
+      await copyFile(path.join(attemptDir, "scene.py"), path.join(jobDir, "scene.py"));
+      await copyFile(path.join(attemptDir, "manim.log"), path.join(jobDir, "manim.log"));
 
-        const { code } = generated;
-        send("code", { python: code, sceneClass: extractSceneClass(code) });
-
-        const attemptDir = path.join(jobDir, `attempt-${attempt}`);
-        await mkdir(attemptDir, { recursive: true });
-
-        const outcome = await renderScene(attemptDir, code, attempt, (line) =>
-          send("log", line),
-        );
-
-        if (outcome.ok) {
-          await writeFile(
-            path.join(attemptDir, "manim.log"),
-            outcome.result.log,
-            "utf8",
-          );
-          // The winning attempt's artifacts are copied up to the job root, so reopening a job
-          // never has to know which attempt succeeded. The per-attempt copies stay put — they
-          // are what makes a retry diagnosable.
-          await copyFile(outcome.result.video, path.join(jobDir, "out.mp4"));
-          await copyFile(
-            path.join(attemptDir, "scene.py"),
-            path.join(jobDir, "scene.py"),
-          );
-          await copyFile(
-            path.join(attemptDir, "manim.log"),
-            path.join(jobDir, "manim.log"),
-          );
-          await writeMeta(jobDir, {
-            jobId,
-            prompt,
-            status: "ok",
-            attempts: attempt,
-            errors,
-          });
-
-          // Container disk is ephemeral — the video only outlives this render if it reaches R2.
-          // A publish failure must not present as a failed render: the video exists and the
-          // user is watching it, so surface the problem without discarding the result.
-          try {
-            await publishJob(jobId, jobDir, [
-              { name: "out.mp4", contentType: "video/mp4" },
-              { name: "meta.json", contentType: "application/json" },
-              { name: "prompt.txt", contentType: "text/plain; charset=utf-8" },
-              { name: "scene.py", contentType: "text/x-python; charset=utf-8" },
-              { name: "manim.log", contentType: "text/plain; charset=utf-8" },
-            ]);
-          } catch (e) {
-            send("warning", {
-              message: "Rendered fine, but saving to R2 failed — this video is not persisted.",
-              raw: e instanceof Error ? (e.stack ?? e.message) : String(e),
-            });
-          }
-
-          // Only finished renders are recorded — a failed job has no video to reopen. Same
-          // reasoning as the publish above: a bookkeeping failure must not present as a failed
-          // render, so this reports and moves on rather than throwing.
-          // Authenticated as the service, not as the user: this runs from inside the response
-          // stream, long after the request scope that could mint a session token has gone.
-          try {
-            await graphqlAsService(
-              CREATE_RENDER,
-              {
-                input: {
-                  jobId,
-                  title: makeTitle(prompt),
-                  url: `/api/video/${jobId}`,
-                  prompt,
-                  sceneClass: extractSceneClass(code),
-                  attempts: attempt,
-                  durationMs: Date.now() - startedAt,
-                },
-              },
-              userId,
-            );
-          } catch (e) {
-            send("warning", {
-              message: "Rendered fine, but this job could not be added to your history.",
-              raw: e instanceof Error ? (e.stack ?? e.message) : String(e),
-            });
-          }
-
-          send("done", { jobId, video: `/api/video/${jobId}` });
-          break;
-        }
-
-        await writeFile(
-          path.join(attemptDir, "error.json"),
-          JSON.stringify(outcome.error, null, 2),
-          "utf8",
-        );
-        errors.push(outcome.error);
-        send("error", outcome.error);
-
-        previous = { code, error: outcome.error.raw };
-
-        if (attempt === MAX_ATTEMPTS) {
-          await writeMeta(jobDir, {
-            jobId,
-            prompt,
-            status: "failed",
-            attempts: attempt,
-            errors,
-          });
-          send("failed", { jobId, attempts: attempt });
-        }
+      // Container disk is ephemeral — the video only outlives this render if it reaches R2, so a
+      // publish that fails is a failed render rather than a success with no video behind it.
+      try {
+        await publishJob(jobId, jobDir, [
+          { name: "out.mp4", contentType: "video/mp4" },
+          { name: "prompt.txt", contentType: "text/plain; charset=utf-8" },
+          { name: "scene.py", contentType: "text/x-python; charset=utf-8" },
+          { name: "manim.log", contentType: "text/plain; charset=utf-8" },
+        ]);
+      } catch (e) {
+        await complete(jobId, userId, {
+          status: "FAILED",
+          error: `Rendered, but could not be saved: ${e instanceof Error ? e.message : String(e)}`,
+          attempts: attempt,
+          durationMs: Date.now() - startedAt,
+        });
+        return;
       }
 
-      if (open) controller.close();
-    },
-  });
+      await complete(jobId, userId, {
+        status: "OK",
+        url: `/api/video/${jobId}`,
+        sceneClass: extractSceneClass(code),
+        attempts: attempt,
+        durationMs: Date.now() - startedAt,
+      });
+      return;
+    }
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
+    lastError = outcome.error.message;
+    previous = { code, error: outcome.error.raw };
+  }
+
+  await complete(jobId, userId, {
+    status: "FAILED",
+    error: lastError,
+    attempts: MAX_ATTEMPTS,
+    durationMs: Date.now() - startedAt,
   });
 }
 
-function makeJobId(prompt: string): string {
-  // YYYYMMDDHHMMSS — 14 chars. Stop before the millisecond dot: the id becomes a path segment
-  // and /api/video/[id] only accepts [A-Za-z0-9-].
-  const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-  const slug =
-    prompt
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 40) || "scene";
-  return `${stamp}-${slug}`;
-}
-
-async function writeMeta(dir: string, meta: unknown) {
-  await writeFile(
-    path.join(dir, "meta.json"),
-    JSON.stringify({ ...(meta as object), finishedAt: new Date().toISOString() }, null, 2),
-    "utf8",
-  );
+async function complete(
+  jobId: string,
+  userId: string,
+  input: Record<string, unknown>,
+): Promise<void> {
+  // Nothing to report the failure to if this is what failed — the row stays PENDING and the
+  // client keeps polling, which is the one outcome worth logging loudly.
+  try {
+    await graphqlAsService(COMPLETE_RENDER, { jobId, input }, userId);
+  } catch (e) {
+    console.error(`completeRender failed for ${jobId}:`, e);
+  }
 }

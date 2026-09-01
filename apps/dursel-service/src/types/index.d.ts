@@ -1,9 +1,9 @@
 /**
  * Everything this service is bound to.
  *
- * Deliberately short. As a standalone Worker it holds the database and the credential it needs to
- * identify callers, and nothing else — the container, the video bucket and the model key belong to
- * dursel-web, which is a separate deployable and keeps its own bindings.
+ * Deliberately short. As a standalone Worker it holds the database, the credential it needs to
+ * identify callers, and the address of the renderer it hands work to — the video bucket and the
+ * model key belong to dursel-web, which is a separate deployable.
  */
 interface Env {
   DB: D1Database;
@@ -13,10 +13,19 @@ interface Env {
    * a user's behalf from work that outlives their request. See common/auth.ts.
    */
   CLERK_SECRET_KEY: string;
+
+  /** Where startRender sends work. The renderer endpoint on dursel-web's container. */
+  RENDERER_URL: string;
 }
 
 interface Context {
   env: Env;
   /** Null for an anonymous caller; resolvers that need a user call requireUser. */
   userId: string | null;
+  /**
+   * Keeps the Worker alive for work that outlasts the response. startRender returns a PENDING row
+   * immediately and lets the render run on past it; without this the runtime would cancel that
+   * request the moment the response was sent.
+   */
+  waitUntil: (promise: Promise<unknown>) => void;
 }

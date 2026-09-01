@@ -72,3 +72,10 @@ body {
   outline: 2px solid var(--yellow-e);
   outline-offset: 2px;
 }
+
+/* The indeterminate render bar. manim reports no percentage, so the bar sweeps rather than
+   filling — it says "still working" without claiming to know how much is left. */
+@keyframes dursel-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}

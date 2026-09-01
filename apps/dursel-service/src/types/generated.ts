@@ -1,6 +1,11 @@
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = T;
+export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
+export type MakeOptional<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]?: Maybe<T[SubKey]> };
+export type MakeMaybe<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]: Maybe<T[SubKey]> };
+export type MakeEmpty<T extends { [key: string]: unknown }, K extends keyof T> = { [_ in K]?: never };
+export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 export type RequireFields<T, K extends keyof T> = Omit<T, K> & { [P in K]-?: NonNullable<T[P]> };
 /** All built-in and custom scalars, mapped to their actual values */
 export type Scalars = {
@@ -9,23 +14,33 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
-  Timestamp: { input: unknown; output: unknown; }
+  Timestamp: { input: any; output: any; }
 };
 
-export type CreateRenderInput = {
+/** What the renderer reports back once manim has finished, or failed. */
+export type CompleteRenderInput = {
   attempts?: InputMaybe<Scalars['Int']['input']>;
   durationMs?: InputMaybe<Scalars['Int']['input']>;
-  jobId: Scalars['String']['input'];
-  prompt: Scalars['String']['input'];
+  error?: InputMaybe<Scalars['String']['input']>;
   sceneClass?: InputMaybe<Scalars['String']['input']>;
-  title: Scalars['String']['input'];
-  url: Scalars['String']['input'];
+  status: RenderStatus;
+  url?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type Mutation = {
   __typename?: 'Mutation';
-  createRender: Render;
+  /**
+   * Records the outcome. Called by the renderer, not by a browser: it runs after the request that
+   * started it is long gone, so it authenticates as the service.
+   */
+  completeRender: Render;
   deleteRender: Response;
+  /**
+   * Requests a render and returns immediately with a PENDING row. manim takes up to three
+   * minutes, far longer than a request should be held open, so the client polls getRender until
+   * status leaves PENDING rather than waiting on this call.
+   */
+  startRender: Render;
   updateRender: Render;
   /**
    * Creates the caller's row or refreshes it from Clerk. Safe to call on every sign-in: the id
@@ -35,13 +50,19 @@ export type Mutation = {
 };
 
 
-export type MutationCreateRenderArgs = {
-  input: CreateRenderInput;
+export type MutationCompleteRenderArgs = {
+  input: CompleteRenderInput;
+  jobId: Scalars['String']['input'];
 };
 
 
 export type MutationDeleteRenderArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationStartRenderArgs = {
+  prompt: Scalars['String']['input'];
 };
 
 
@@ -83,8 +104,8 @@ export type QueryGetRenderByJobIdArgs = {
 };
 
 /**
- * One finished render. jobId is the storage key its video and source live under; url is the
- * address that video was served at.
+ * A render. The row exists from the moment one is requested, so a job still running and a job
+ * that failed are both visible — status says which, and it is what a client polls on.
  */
 export type Render = {
   __typename?: 'Render';
@@ -97,14 +118,24 @@ export type Render = {
   creator?: Maybe<User>;
   creatorId: Scalars['ID']['output'];
   durationMs?: Maybe<Scalars['Int']['output']>;
+  /** Why it failed, when it did. Null on every other status. */
+  error?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   jobId: Scalars['String']['output'];
   prompt: Scalars['String']['output'];
   sceneClass?: Maybe<Scalars['String']['output']>;
+  status: RenderStatus;
   title: Scalars['String']['output'];
   updatedAt: Scalars['Timestamp']['output'];
-  url: Scalars['String']['output'];
+  /** Null until the render finishes. The address its video is served at. */
+  url?: Maybe<Scalars['String']['output']>;
 };
+
+export enum RenderStatus {
+  Failed = 'FAILED',
+  Ok = 'OK',
+  Pending = 'PENDING'
+}
 
 export enum Response {
   Success = 'SUCCESS'
@@ -138,7 +169,7 @@ export type User = {
 
 export type ResolverTypeWrapper<T> = Promise<T> | T;
 
-export type Resolver<TResult, TParent = Record<PropertyKey, never>, TContext = Record<PropertyKey, never>, TArgs = Record<PropertyKey, never>> = ResolverFn<TResult, TParent, TContext, TArgs>;
+export type Resolver<TResult, TParent = {}, TContext = {}, TArgs = {}> = ResolverFn<TResult, TParent, TContext, TArgs>;
 
 export type ResolverFn<TResult, TParent, TContext, TArgs> = (
   parent: TParent,
@@ -175,21 +206,21 @@ export type SubscriptionObject<TResult, TKey extends string, TParent, TContext, 
   | SubscriptionSubscriberObject<TResult, TKey, TParent, TContext, TArgs>
   | SubscriptionResolverObject<TResult, TParent, TContext, TArgs>;
 
-export type SubscriptionResolver<TResult, TKey extends string, TParent = Record<PropertyKey, never>, TContext = Record<PropertyKey, never>, TArgs = Record<PropertyKey, never>> =
+export type SubscriptionResolver<TResult, TKey extends string, TParent = {}, TContext = {}, TArgs = {}> =
   | ((...args: any[]) => SubscriptionObject<TResult, TKey, TParent, TContext, TArgs>)
   | SubscriptionObject<TResult, TKey, TParent, TContext, TArgs>;
 
-export type TypeResolveFn<TTypes, TParent = Record<PropertyKey, never>, TContext = Record<PropertyKey, never>> = (
+export type TypeResolveFn<TTypes, TParent = {}, TContext = {}> = (
   parent: TParent,
   context: TContext,
   info: GraphQLResolveInfo
 ) => Maybe<TTypes> | Promise<Maybe<TTypes>>;
 
-export type IsTypeOfResolverFn<T = Record<PropertyKey, never>, TContext = Record<PropertyKey, never>> = (obj: T, context: TContext, info: GraphQLResolveInfo) => boolean | Promise<boolean>;
+export type IsTypeOfResolverFn<T = {}, TContext = {}> = (obj: T, context: TContext, info: GraphQLResolveInfo) => boolean | Promise<boolean>;
 
 export type NextResolverFn<T> = () => Promise<T>;
 
-export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = Record<PropertyKey, never>, TContext = Record<PropertyKey, never>, TArgs = Record<PropertyKey, never>> = (
+export type DirectiveResolverFn<TResult = {}, TParent = {}, TContext = {}, TArgs = {}> = (
   next: NextResolverFn<TResult>,
   parent: TParent,
   args: TArgs,
@@ -199,17 +230,16 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 
 
 
-
-
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
-  CreateRenderInput: CreateRenderInput;
+  CompleteRenderInput: CompleteRenderInput;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
-  Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
-  Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  Mutation: ResolverTypeWrapper<{}>;
+  Query: ResolverTypeWrapper<{}>;
   Render: ResolverTypeWrapper<Render>;
+  RenderStatus: RenderStatus;
   Response: Response;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
@@ -221,11 +251,11 @@ export type ResolversTypes = {
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
   Boolean: Scalars['Boolean']['output'];
-  CreateRenderInput: CreateRenderInput;
+  CompleteRenderInput: CompleteRenderInput;
   ID: Scalars['ID']['output'];
   Int: Scalars['Int']['output'];
-  Mutation: Record<PropertyKey, never>;
-  Query: Record<PropertyKey, never>;
+  Mutation: {};
+  Query: {};
   Render: Render;
   String: Scalars['String']['output'];
   Timestamp: Scalars['Timestamp']['output'];
@@ -235,8 +265,9 @@ export type ResolversParentTypes = {
 };
 
 export type MutationResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
-  createRender?: Resolver<ResolversTypes['Render'], ParentType, ContextType, RequireFields<MutationCreateRenderArgs, 'input'>>;
+  completeRender?: Resolver<ResolversTypes['Render'], ParentType, ContextType, RequireFields<MutationCompleteRenderArgs, 'input' | 'jobId'>>;
   deleteRender?: Resolver<ResolversTypes['Response'], ParentType, ContextType, RequireFields<MutationDeleteRenderArgs, 'id'>>;
+  startRender?: Resolver<ResolversTypes['Render'], ParentType, ContextType, RequireFields<MutationStartRenderArgs, 'prompt'>>;
   updateRender?: Resolver<ResolversTypes['Render'], ParentType, ContextType, RequireFields<MutationUpdateRenderArgs, 'id' | 'input'>>;
   upsertUser?: Resolver<ResolversTypes['User'], ParentType, ContextType, RequireFields<MutationUpsertUserArgs, 'input'>>;
 };
@@ -254,13 +285,16 @@ export type RenderResolvers<ContextType = Context, ParentType extends ResolversP
   creator?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   creatorId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   durationMs?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  error?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   jobId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   prompt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   sceneClass?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  status?: Resolver<ResolversTypes['RenderStatus'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
-  url?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  url?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export interface TimestampScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Timestamp'], any> {
@@ -274,6 +308,7 @@ export type UserResolvers<ContextType = Context, ParentType extends ResolversPar
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lastName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type Resolvers<ContextType = Context> = {

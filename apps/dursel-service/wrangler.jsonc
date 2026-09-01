@@ -42,5 +42,11 @@
     }
   },
 
+  // Not a secret — just the address of dursel-web's renderer endpoint. The secret that makes a
+  // call to it legitimate is CLERK_SECRET_KEY, which both services already hold.
+  "vars": {
+    "RENDERER_URL": "https://dursel-web.ariuntuguldur3.workers.dev/api/render"
+  },
+
   "observability": { "enabled": true }
 }

@@ -38,12 +38,3 @@ export function formatDate(
         timeZone,
       });
 }
-
-/** One row of the history sidebar, as /api/history returns it. */
-export interface RenderSummary {
-  id: string;
-  jobId: string;
-  title: string;
-  url: string;
-  createdAt: number;
-}

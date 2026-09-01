@@ -14,7 +14,10 @@
 FROM node:24-slim AS web
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# --no-audit/--no-fund cut work that has no value in an image build. The retry settings are here
+# because this install is long enough that a single dropped connection has already killed a
+# deploy: npm's default is to give up quickly on ECONNRESET.
+RUN npm ci --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=180000
 COPY . .
 # `output: "standalone"` plus outputFileTracingRoot emits a self-contained server that reaches
 # back into the root node_modules for only the modules actually imported.
