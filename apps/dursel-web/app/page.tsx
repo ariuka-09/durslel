@@ -43,21 +43,27 @@ export default function Home() {
 
   const [startRender, { loading: starting }] = useStartRenderMutation();
 
-  // The render being watched. Polled only while it is still running — Apollo stops when the
-  // interval is 0, so a finished render costs nothing to keep on screen.
+  // Whether the watched render is still running. Held in state rather than derived from the
+  // query, because it decides that query's poll interval and so has to be known before it runs.
+  const [pending, setPending] = useState(false);
+
+  // Polled only while the render is actually running. A zero interval stops Apollo entirely, so a
+  // finished render left on screen issues no requests at all.
   const { data: activeData } = useGetRenderQuery({
     variables: { id: activeId ?? "" },
     skip: !activeId,
-    pollInterval: 1500,
+    pollInterval: pending ? 1500 : 0,
     // Without this the poll would keep serving the first cached answer and the bar never moves.
     fetchPolicy: "network-only",
   });
   const active = activeData?.getRender ?? null;
-  const pending = active?.status === RenderStatus.Pending;
 
   // Stop polling and refresh the sidebar the moment a render settles.
   useEffect(() => {
-    if (active && active.status !== RenderStatus.Pending) void refetchHistory();
+    if (active && active.status !== RenderStatus.Pending) {
+      setPending(false);
+      void refetchHistory();
+    }
   }, [active, refetchHistory]);
 
   // Mirrors the Clerk profile into the users table. Taken from the browser's already-loaded user
@@ -85,6 +91,7 @@ export default function Home() {
     // The row exists as PENDING before this resolves, so there is something to watch immediately.
     if (data?.startRender) {
       setActiveId(data.startRender.id);
+      setPending(data.startRender.status === RenderStatus.Pending);
       void refetchHistory();
     }
   }
@@ -119,8 +126,9 @@ export default function Home() {
       <History
         renders={renders}
         current={activeId}
-        open={(id) => {
+        open={(id, status) => {
           setActiveId(id);
+          setPending(status === RenderStatus.Pending);
           setHistoryOpen(false);
           setCopied(false);
         }}
@@ -312,7 +320,7 @@ function History({
 }: {
   renders: RenderSummary[];
   current: string | null;
-  open: (id: string) => void;
+  open: (id: string, status: RenderStatus) => void;
   shown: boolean;
 }) {
   return (
@@ -332,7 +340,7 @@ function History({
             <button
               key={id}
               type="button"
-              onClick={() => open(id)}
+              onClick={() => open(id, status)}
               className={`block w-full border-b border-rule/50 px-4 py-2.5 text-left hover:bg-ground ${
                 id === current ? "bg-ground" : ""
               }`}
