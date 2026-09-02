@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/*
+ * Manim's own visual vocabulary: the default canvas ground, the real palette constants, and
+ * hairline geometry. Deliberately a single dark look — the tool should read like the thing it
+ * makes, and manim renders on #0D0D0D.
+ */
+:root {
+  --ground: #0d0d0d;
+  --panel: #14161a;
+  --rule: #2a2e35;
+  --ink: #e8e6e3;
+  --muted: #8a8f98;
+
+  /* manim constants, verbatim */
+  --blue-d: #236b8e;
+  --yellow-e: #e8c11c;
+  --green-c: #83c167;
+  --red-c: #fc6255;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-rule: var(--rule);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-blue-d: var(--blue-d);
+  --color-yellow-e: var(--yellow-e);
+  --color-green-c: var(--green-c);
+  --color-red-c: var(--red-c);
+
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/*
+ * Signature: log lines write themselves on, the way manim's Write animation strokes a path,
+ * rather than fading in. One bold move; everything around it stays flat and quiet.
+ */
+@keyframes stroke-on {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.stroke-on {
+  animation: stroke-on 260ms linear both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stroke-on {
+    animation: none;
+  }
+}
+
+::selection {
+  background: var(--blue-d);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--yellow-e);
+  outline-offset: 2px;
+}
+
+/* The indeterminate render bar. manim reports no percentage, so the bar sweeps rather than
+   filling — it says "still working" without claiming to know how much is left. */
+@keyframes durslel-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}

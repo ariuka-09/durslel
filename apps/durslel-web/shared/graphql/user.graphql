@@ -1,0 +1,31 @@
+query Me {
+  me {
+    id
+    firstName
+    lastName
+    email
+    role
+  }
+}
+
+# The admin dashboard's left-hand roster. Refused unless the session token says ADMIN.
+query Users {
+  users {
+    id
+    firstName
+    lastName
+    email
+    role
+    createdAt
+  }
+}
+
+mutation UpsertUser($input: UpsertUserInput!) {
+  upsertUser(input: $input) {
+    id
+    firstName
+    lastName
+    email
+    role
+  }
+}

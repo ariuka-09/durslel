@@ -1,0 +1,93 @@
+{
+  // Keeps its original name while the repo is called durslel — see durslel-service/wrangler.jsonc.
+  // durslel-service binds to this Worker by this exact name.
+  //
+  // Bindings live in the environments below rather than up here, because wrangler does not inherit
+  // bindings into a named environment — only non-binding settings like the ones directly below.
+  "name": "dursel-web",
+  "account_id": "8341d4b31e574cb9873ce1bb80671685",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "main": "worker/index.ts",
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ManimContainer"] }],
+  "observability": { "enabled": true },
+
+  // `wrangler dev` runs with no --env, so this is the local-development binding set. It points at
+  // the TEST bucket and the TEST service on purpose: a local Worker writing where real users read
+  // is the mistake this split exists to prevent.
+  "containers": [
+    {
+      // standard-1 = 1/2 vCPU, 4 GiB memory, 8 GB disk. Memory is the binding cost: at ~60s a
+      // render, the Workers Paid plan's included 25 GiB-hours covers roughly 375 renders/month.
+      "class_name": "ManimContainer",
+      "image": "./Dockerfile",
+      // Built from the repo root: dependencies live in the root node_modules, so a build scoped
+      // to this directory would have nothing to install.
+      "image_build_context": "../..",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
+  // Lets the Worker serve finished videos straight from R2. Replaying an old render then costs an
+  // R2 GET instead of waking a container, which is both faster and cheaper. Serving needs only
+  // this binding — the S3 credentials in the secrets are for the container's uploads.
+  //
+  // No D1 binding anywhere here on purpose: the database belongs to durslel-service.
+  "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos-test" }],
+  "vars": { "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql" },
+
+  "env": {
+    // One container rather than two: nobody queues behind anybody on a test deployment, and the
+    // GiB-hours it would burn are the same ones production needs.
+    "test": {
+      "name": "dursel-web-test",
+      "containers": [
+        {
+          "class_name": "ManimContainer",
+          "image": "./Dockerfile",
+          "image_build_context": "../..",
+          "instance_type": "standard-1",
+          "max_instances": 1
+        }
+      ],
+      "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
+      "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos-test" }],
+      // Read by lib/graphql.ts inside the container. Without it the code falls back to its
+      // hardcoded production default, and the test app would write renders into the production
+      // database. worker/index.ts is what forwards it into the container's environment.
+      "vars": { "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql" }
+    },
+
+    // `name` is pinned rather than left to wrangler, which would otherwise append the environment
+    // and deploy a *new* Worker at dursel-web-production. This is the Worker already serving
+    // traffic, and the one durslel-service's RENDERER binding resolves to.
+    "production": {
+      "name": "dursel-web",
+      "containers": [
+        {
+          // Pinned for the same reason `name` above is: with --env, wrangler derives the
+          // container application name as <worker>-<class>-<env> and tries to CREATE
+          // "dursel-web-manimcontainer-production". The Durable Object namespace already carries
+          // the application named below — created by an earlier deploy without --env — and a
+          // namespace may only have one, so the create fails with
+          // DURABLE_OBJECT_ALREADY_HAS_APPLICATION. Naming it explicitly makes the deploy update
+          // the running application instead.
+          //
+          // Do NOT pin the test block the same way: its application really is called
+          // "dursel-web-test-manimcontainer-test", and pinning would break the match there.
+          "name": "dursel-web-manimcontainer",
+          "class_name": "ManimContainer",
+          "image": "./Dockerfile",
+          "image_build_context": "../..",
+          "instance_type": "standard-1",
+          "max_instances": 2
+        }
+      ],
+      "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
+      "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos" }],
+      "vars": { "GRAPHQL_URL": "https://dursel-service.ariuntuguldur3.workers.dev/graphql" }
+    }
+  }
+}

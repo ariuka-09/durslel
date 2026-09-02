@@ -1,0 +1,55 @@
+{
+  "name": "durslel-web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/durslel-web",
+  "projectType": "application",
+  "tags": [
+    "type:app",
+    "scope:durslel"
+  ],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/durslel-web",
+        "command": "npx next build"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/durslel-web",
+        "command": "npx next dev"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": [
+          "apps/durslel-web/**/*.ts",
+          "apps/durslel-web/**/*.tsx"
+        ]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "apps/durslel-web/jest.config.ts"
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/durslel-web",
+        "command": "npx wrangler deploy --env production"
+      }
+    },
+    "deploy-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/durslel-web",
+        "command": "npx wrangler deploy --env test"
+      }
+    }
+  }
+}

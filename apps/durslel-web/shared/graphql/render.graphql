@@ -1,0 +1,46 @@
+# Two callers, one document: the history sidebar asks for its own (no creatorId) and the admin
+# dashboard names a person. The sidebar reads only the first four fields; the rest are what a
+# dashboard card shows, and are cheap enough not to be worth a second query to avoid.
+query GetRenders($creatorId: ID) {
+  getRenders(creatorId: $creatorId) {
+    id
+    jobId
+    title
+    url
+    status
+    error
+    prompt
+    sceneClass
+    attempts
+    durationMs
+    createdAt
+  }
+}
+
+# What the progress bar polls while a render is in flight.
+query GetRender($id: ID!) {
+  getRender(id: $id) {
+    id
+    jobId
+    title
+    url
+    status
+    error
+    createdAt
+  }
+}
+
+mutation StartRender($prompt: String!) {
+  startRender(prompt: $prompt) {
+    id
+    jobId
+    title
+    url
+    status
+    createdAt
+  }
+}
+
+mutation DeleteRender($id: ID!) {
+  deleteRender(id: $id)
+}

@@ -1,0 +1,66 @@
+{
+  // The Worker keeps its original name while the repo is called durslel: renaming it here would
+  // deploy a second Worker at a new hostname and leave the old one serving traffic. Same for
+  // "dursel-db" and "dursel-web" — those are the real names in the account, not labels.
+  //
+  // Bindings are declared per environment rather than once at the top, because wrangler does not
+  // inherit bindings into a named environment — only non-binding settings like the ones directly
+  // below. Declaring them once at the top meant `deploy --env test` shipped a Worker with no
+  // RENDERER at all, and every startRender on it threw.
+  "name": "dursel-service",
+  "account_id": "8341d4b31e574cb9873ce1bb80671685",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "main": "src/index.ts",
+  "observability": { "enabled": true },
+
+  // `wrangler dev` runs with no --env, so this is the local-development binding set. It points at
+  // the TEST database on purpose: a local Worker writing to the database real users are reading
+  // is the mistake this whole split exists to prevent.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dursel-db-test",
+      "database_id": "8ef87e55-b777-48cc-89dd-d9665be659ca",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "services": [{ "binding": "RENDERER", "service": "dursel-web-test" }],
+
+  "env": {
+    // Deployed as "dursel-service-test", against its own copy of the database, talking to the
+    // test web Worker. Nothing here touches a production resource.
+    "test": {
+      "name": "dursel-service-test",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dursel-db-test",
+          "database_id": "8ef87e55-b777-48cc-89dd-d9665be659ca",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "services": [{ "binding": "RENDERER", "service": "dursel-web-test" }]
+    },
+
+    // `name` is pinned rather than left to wrangler, which would otherwise append the environment
+    // and deploy a *new* Worker at dursel-service-production. This is the Worker already serving
+    // traffic, and the hostname durslel-web's clients are pointed at.
+    "production": {
+      "name": "dursel-service",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dursel-db",
+          "database_id": "f2c1d8e4-71cc-4c7a-854e-2cde86fcf32d",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      // A binding rather than a URL. Both Workers sit on workers.dev, and Cloudflare refuses a
+      // plain fetch from one Worker to another on the same zone — that is error 1042, which is
+      // what a hostname here produced. A service binding routes the request internally.
+      "services": [{ "binding": "RENDERER", "service": "dursel-web" }]
+    }
+  }
+}
