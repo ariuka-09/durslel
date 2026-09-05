@@ -31,6 +31,11 @@ interface Context {
    */
   role: import('./generated').Role;
   /**
+   * Whether the caller is the deployment itself rather than a browser. Gates the resolvers that
+   * record what an outside system confirmed — see requireService in common/auth.ts.
+   */
+  service: boolean;
+  /**
    * Keeps the Worker alive for work that outlasts the response. startRender returns a PENDING row
    * immediately and lets the render run on past it; without this the runtime would cancel that
    * request the moment the response was sent.

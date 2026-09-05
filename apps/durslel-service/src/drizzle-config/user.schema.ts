@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-import { Role } from '@/types/generated';
+import { Role, SubscriptionTier } from '@/types/generated';
 
 /**
  * A person who has signed in.
@@ -28,6 +28,22 @@ export const userTable = sqliteTable('users', {
    * nobody — this copy exists so the admin list can show who is one without a Clerk call per row.
    */
   role: text('role').$type<Role>().default(Role.User).notNull(),
+
+  /**
+   * What was last paid for. Never cleared on expiry — `subscriptionUntil` is what decides whether
+   * it is in force, and keeping the tier means a lapsed subscriber who pays again returns to the
+   * plan they knew rather than to a blank.
+   */
+  subscription: text('subscription').$type<SubscriptionTier>().default(SubscriptionTier.Free).notNull(),
+
+  /** End of the paid period. Null for someone who has never paid. */
+  subscriptionUntil: int('subscription_until', { mode: 'timestamp_ms' }),
+
+  /**
+   * The PaymentIntent that last extended the subscription. Wire can deliver the same event twice,
+   * and this column is what makes the second delivery a no-op instead of another 30 days.
+   */
+  subscriptionPayment: text('subscription_payment'),
 
   createdAt: int('created_at', { mode: 'timestamp_ms' })
     .default(sql`(unixepoch() * 1000)`)

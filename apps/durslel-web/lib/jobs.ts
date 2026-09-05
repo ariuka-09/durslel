@@ -14,12 +14,16 @@ import { RenderStatus } from "@/generated";
  * that reads "failed" in red on one screen cannot read as something else on the other.
  */
 export const STATUS_TEXT: Record<RenderStatus, string> = {
+  [RenderStatus.Queued]: "queued",
   [RenderStatus.Pending]: "rendering",
   [RenderStatus.Ok]: "done",
   [RenderStatus.Failed]: "failed",
 };
 
 export const STATUS_COLOR: Record<RenderStatus, string> = {
+  // Deliberately not the yellow of "rendering": queued means nothing is happening yet, and the
+  // two states are a second apart on screen when a burst arrives.
+  [RenderStatus.Queued]: "text-blue-d",
   [RenderStatus.Pending]: "text-yellow-e",
   [RenderStatus.Ok]: "text-green-c",
   [RenderStatus.Failed]: "text-red-c",

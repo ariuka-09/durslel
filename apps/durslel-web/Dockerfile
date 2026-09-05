@@ -63,6 +63,11 @@ ENV MANIM_BIN=/opt/venv/bin/manim
 # asks for scenes under 60s, so 90s is generous rather than tight.
 ENV RENDER_TIMEOUT_MS=90000
 # The whole job's wall clock, and how many rerolls it may spend inside it.
+# Four renders run at once; a fifth waits rather than slowing the four down. Four matches the
+# product promise, not the vCPU count — standard-3 has two cores and carries four comfortably
+# because manim is single-threaded. See lib/queue.ts.
+ENV MAX_CONCURRENT_RENDERS=4
+ENV MAX_QUEUED_RENDERS=20
 ENV RENDER_BUDGET_MS=240000
 ENV MAX_ATTEMPTS=4
 ENV NODE_ENV=production

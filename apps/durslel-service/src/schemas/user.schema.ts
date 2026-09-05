@@ -11,6 +11,21 @@ export const userTypeDefs = gql`
   }
 
   """
+  What a person is paying for. FREE is the default and the only tier nobody buys; the rest are
+  granted by a confirmed Wire payment and last 30 days from it.
+
+  Read from User.subscription, which reports FREE once the paid period has run out — the stored
+  tier is not cleared on expiry, so a lapsed subscriber keeps their history and their old tier
+  reappears if they pay again.
+  """
+  enum SubscriptionTier {
+    FREE
+    BASIC
+    PRO
+    STUDIO
+  }
+
+  """
   A signed-in person. The id is Clerk's, so it is the same value a session carries and needs no
   translation. Name, email and role are a cache of Clerk's copy and may lag it.
   """
@@ -20,8 +35,25 @@ export const userTypeDefs = gql`
     firstName: String
     lastName: String
     role: Role!
+    """
+    The tier in force right now: FREE once subscriptionUntil has passed, whatever was bought
+    until then.
+    """
+    subscription: SubscriptionTier!
+    """When the paid period ends. Null for someone who has never paid."""
+    subscriptionUntil: Timestamp
     createdAt: Timestamp!
     updatedAt: Timestamp!
+  }
+
+  """
+  A payment Wire has confirmed. paymentIntent is the id of the intent that paid for it, and is
+  what makes activation exactly-once: Wire can deliver the same event more than once, and each
+  delivery must not buy another 30 days.
+  """
+  input ActivateSubscriptionInput {
+    tier: SubscriptionTier!
+    paymentIntent: String!
   }
 
   input UpsertUserInput {
@@ -50,5 +82,14 @@ export const userTypeDefs = gql`
     write another user nor promote one.
     """
     upsertUser(input: UpsertUserInput!): User!
+    """
+    Records a paid subscription for the user the caller is acting for, extending any period still
+    running rather than replacing it.
+
+    Callable only by the deployment itself, with the shared secret — never from a browser, where
+    it would be a button that grants a paid tier for free. The webhook that calls it acts on a
+    signature-verified Wire event, long after the buyer's own session has gone.
+    """
+    activateSubscription(input: ActivateSubscriptionInput!): User!
   }
 `;

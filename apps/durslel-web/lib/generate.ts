@@ -1,11 +1,36 @@
-import { ApiError, FinishReason, GoogleGenAI } from "@google/genai";
+import { ApiError, FinishReason, GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { renderError, type RenderError } from "./errors";
 
 // Swap this in .env.local to A/B a different model — nothing else in the app cares.
+//
+// This is a preview model, which can be withdrawn without notice. It stays the default anyway
+// because the GA alternatives were measured against this system prompt and are worse here:
+// gemini-3.8-flash returned 503 "experiencing high demand" on three of four calls, and
+// gemini-3.5-flash spent 3.1k thinking tokens and 28s on a scene this one writes in 5s.
 const MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
+
+// Left unset, a Gemini 3 model chooses its own thinking effort, and that was where nearly all of
+// a render's wall time went. Measured on this system prompt, same scene:
+//
+//   default effort   22.8s   3324 thinking tokens
+//   LOW               5-9s      0 thinking tokens
+//
+// This prompt is prescriptive enough that there is little left to reason about, and a scene that
+// still fails gets rerolled with the verbatim traceback. MINIMAL was measured too and is not an
+// improvement: same token counts, but one call in three ran 34s, trading a consistent five
+// seconds for an unpredictable half-minute.
+//
+// Watch the reroll rate before lowering this. A second attempt costs another Gemini call AND
+// another render, so a cheaper thinking level that fails more often is a net loss. Set
+// GEMINI_THINKING_LEVEL to MINIMAL, LOW, MEDIUM or HIGH to A/B it; the enum lookup is what
+// validates it, so an unrecognised value falls back to LOW rather than reaching the API.
+const THINKING_LEVEL: ThinkingLevel =
+  ThinkingLevel[
+    (process.env.GEMINI_THINKING_LEVEL ?? "LOW").toUpperCase() as keyof typeof ThinkingLevel
+  ] ?? ThinkingLevel.LOW;
 
 // Thinking tokens are drawn from this same budget, so leave generous headroom: a scene is
 // ~1.5k tokens of Python but the model may reason for a while about the manim API first.
@@ -108,6 +133,7 @@ export async function generateScene(
       config: {
         systemInstruction: system,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
+        thinkingConfig: { thinkingLevel: THINKING_LEVEL },
       },
     });
   } catch (e) {

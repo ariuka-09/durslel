@@ -1,7 +1,7 @@
 import { startRendering } from '@/common/renderer';
 import { startRender } from '@/resolvers/mutations/start-render';
 import { RenderStatus } from '@/types/generated';
-import { anonCtx, ctx, info, render, returning, waited, written } from '../test-helpers';
+import { adminCtx, anonCtx, ctx, info, render, returning, waited, written } from '../test-helpers';
 
 jest.mock('@/common/drizzle-provider');
 jest.mock('@/common/renderer');
@@ -80,6 +80,14 @@ describe('startRender', () => {
     returning([pending, pending]);
 
     await expect(startRender!({}, { prompt: 'a prompt' }, ctx, info)).resolves.toBeDefined();
+  });
+
+  /** The limit rations renderer time between users; the account that oversees them is exempt. */
+  it('lets an admin past the limit', async () => {
+    returning([pending, pending, pending, pending]);
+
+    await expect(startRender!({}, { prompt: 'a prompt' }, adminCtx, info)).resolves.toBeDefined();
+    expect(written).toContainEqual(expect.objectContaining({ creatorId: 'user_admin' }));
   });
 
   it('refuses an anonymous caller', async () => {

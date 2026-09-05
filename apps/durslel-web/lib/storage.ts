@@ -64,7 +64,10 @@ async function put(
   });
   if (!res.ok) {
     throw new Error(
-      `R2 PUT ${key} failed: ${res.status} ${res.statusText}\n${await res.text()}`,
+      // Names the bucket and account, not just the key. A 403 here is almost always credentials
+      // pointed at the wrong bucket, and an error that omits which bucket was tried makes that
+      // the one thing you cannot tell from the message.
+      `R2 PUT ${BUCKET}/${key} failed on account ${ACCOUNT_ID}: ${res.status} ${res.statusText}\n${await res.text()}`,
     );
   }
 }

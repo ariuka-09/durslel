@@ -20,13 +20,16 @@ const waitUntil = (promise: Promise<unknown>) => {
 };
 
 /** A signed-in caller. Every resolver here scopes its work to this id. */
-export const ctx: Context = { env, userId: 'user_owner', role: Role.User, waitUntil };
+export const ctx: Context = { env, userId: 'user_owner', role: Role.User, service: false, waitUntil };
 
 /** The same caller with the ADMIN role their session token carried. */
 export const adminCtx: Context = { ...ctx, userId: 'user_admin', role: Role.Admin };
 
 /** Nobody signed in — what an unauthenticated request produces. */
-export const anonCtx: Context = { env, userId: null, role: Role.User, waitUntil };
+export const anonCtx: Context = { env, userId: null, role: Role.User, service: false, waitUntil };
+
+/** durslel-web calling with the deployment secret, acting for a user who is no longer present. */
+export const serviceCtx: Context = { ...ctx, service: true };
 
 export const render = {
   id: 'render1',

@@ -7,9 +7,16 @@ import { Role } from '@/types/generated';
 export interface Session {
   userId: string | null;
   role: Role;
+  /**
+   * True only when the caller proved it holds the deployment secret rather than a user session.
+   * Kept separate from the role because it grants something a role cannot: the right to record
+   * what an outside system (Wire, for payments) says happened, on behalf of a user who is not
+   * the one making the request.
+   */
+  service: boolean;
 }
 
-const anonymous: Session = { userId: null, role: Role.User };
+const anonymous: Session = { userId: null, role: Role.User, service: false };
 
 /**
  * Who is calling, according to Clerk.
@@ -38,7 +45,12 @@ export const authenticate = async (request: Request, env: Env): Promise<Session>
   if (service) {
     if (!safeEqual(service, env.CLERK_SECRET_KEY)) return anonymous;
 
-    return { userId: request.headers.get('X-Dursel-User'), role: Role.User };
+    // A service call that names nobody is nobody: the flag only means anything alongside the
+    // user it is acting for.
+    const actingFor = request.headers.get('X-Dursel-User');
+    if (!actingFor) return anonymous;
+
+    return { userId: actingFor, role: Role.User, service: true };
   }
 
   const header = request.headers.get('Authorization');
@@ -49,7 +61,7 @@ export const authenticate = async (request: Request, env: Env): Promise<Session>
   try {
     const claims = await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
 
-    return { userId: claims.sub ?? null, role: roleFrom(claims) };
+    return { userId: claims.sub ?? null, role: roleFrom(claims), service: false };
   } catch {
     // Expired or malformed tokens are the anonymous case, not a server fault.
     return anonymous;
@@ -108,6 +120,19 @@ const readCookie = (request: Request, name: string): string | null => {
 export const requireUser = (userId: string | null): string => {
   if (!userId) throw new GraphQLError('Not signed in', { extensions: { code: 'UNAUTHENTICATED' } });
   return userId;
+};
+
+/**
+ * For the resolvers only the deployment itself may call — recording a payment Wire has confirmed,
+ * where the caller acts for a user whose session ended when they left for the checkout page.
+ *
+ * A browser session must never pass this: `activateSubscription` grants a paid tier, so a signed-in
+ * caller reaching it would be able to grant themselves one for free.
+ */
+export const requireService = ({ userId, service }: Session): string => {
+  if (!service) throw new GraphQLError('Service only', { extensions: { code: 'FORBIDDEN' } });
+
+  return requireUser(userId);
 };
 
 /**

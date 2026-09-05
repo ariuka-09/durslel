@@ -6,13 +6,16 @@ import { useEffect, useState } from "react";
 
 import {
   RenderStatus,
+  SubscriptionTier,
   useGetRenderQuery,
   useGetRendersQuery,
+  useMeQuery,
   useStartRenderMutation,
   useUpsertUserMutation,
   type GetRendersQuery,
 } from "@/generated";
 import { useIsAdmin } from "@/lib/admin";
+import { tierLabel } from "@/lib/plans";
 import {
   DAILY_LIMIT,
   STATUS_COLOR,
@@ -26,6 +29,10 @@ type RenderSummary = GetRendersQuery["getRenders"][number];
 /**
  * How long to keep polling a PENDING render before treating it as lost. The renderer's own budget
  * is four minutes; the extra minute is the container's cold start plus slack.
+ *
+ * This measures the render alone. Time spent QUEUED is exempt — see the effect that uses it —
+ * because a queued job has not started its budget yet and there is no bound on how long a burst
+ * can keep it waiting.
  */
 const STALL_MS = 300_000;
 
@@ -66,10 +73,14 @@ export default function Home() {
     fetchPolicy: "network-only",
   });
   const active = activeData?.getRender ?? null;
+  // Waiting for a render slot rather than being rendered. Kept apart from PENDING because the
+  // two need opposite treatment below: both keep polling, only one is allowed to time out.
+  const queued = active?.status === RenderStatus.Queued;
 
   // Stop polling and refresh the sidebar the moment a render settles.
   useEffect(() => {
-    if (active && active.status !== RenderStatus.Pending) {
+    // QUEUED is still in flight, so it must not stop the poll — only OK and FAILED settle a row.
+    if (active && active.status !== RenderStatus.Pending && active.status !== RenderStatus.Queued) {
       setPending(false);
       void refetchHistory();
     }
@@ -81,14 +92,64 @@ export default function Home() {
   // well past that is one whose container died mid-job — and the browser would otherwise poll it
   // every 1.5 seconds for as long as the tab stayed open. Stopping only stops this client: the row
   // is still PENDING in the database, which is honest, because nobody knows that it failed.
+  //
+  // A QUEUED row is exempt, and that exemption is the whole point of the status existing. A job
+  // behind a full queue has not been given its four minutes yet — up to MAX_QUEUED_RENDERS jobs
+  // can sit in front of it — so counting the wait here would declare a perfectly healthy render
+  // lost. `queued` in the dependencies restarts the clock when the slot is granted, which is the
+  // moment the budget it is measuring actually begins.
   useEffect(() => {
-    if (!pending) return;
+    if (!pending || queued) return;
     const timer = setTimeout(() => {
       setPending(false);
       setStalled(true);
     }, STALL_MS);
     return () => clearTimeout(timer);
-  }, [pending, activeId]);
+  }, [pending, queued, activeId]);
+
+  // Set when the buyer comes back from Wire's checkout page, which returns to /?paid=<tier>.
+  // The payment is confirmed to the webhook, not to the browser, so the tier can arrive a moment
+  // after the buyer does — this is what keeps the pill polling until it does.
+  const [awaitingTier, setAwaitingTier] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paid = params.get("paid");
+    const paymentIntentId = params.get("pi");
+    if (!paid) return;
+
+    setAwaitingTier(paid);
+
+    // Ask our own server to check the payment with Wire, rather than waiting on a webhook that
+    // may not be registered yet. It grants through the same mutation the webhook uses, keyed on
+    // the intent, so the two cannot double-count.
+    if (paymentIntentId) {
+      void fetch("/api/pay/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentIntentId }),
+      }).catch(() => undefined);
+    }
+
+    // The tier is now in the URL of a page the buyer may bookmark or reload; it has served its
+    // purpose the moment this effect has read it.
+    window.history.replaceState(null, "", window.location.pathname);
+
+    // A payment that never confirms must not leave the browser polling forever.
+    const timer = setTimeout(() => setAwaitingTier(null), 60_000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const { data: me } = useMeQuery({
+    skip: !isSignedIn,
+    pollInterval: awaitingTier ? 2000 : 0,
+    fetchPolicy: "cache-and-network",
+  });
+  const tier = me?.me?.subscription ?? SubscriptionTier.Free;
+
+  useEffect(() => {
+    if (awaitingTier && tier === awaitingTier) setAwaitingTier(null);
+  }, [awaitingTier, tier]);
 
   // Mirrors the Clerk profile into the users table. Taken from the browser's already-loaded user
   // rather than a server-side lookup, so keeping the row fresh costs no extra Clerk API call.
@@ -152,7 +213,12 @@ export default function Home() {
   const busy = starting || pending;
   // Counted off the history the sidebar already loaded, so it costs no request and refreshes
   // whenever that does — which includes right after a render is started.
-  const left = rendersLeftToday(renders.map((r) => r.createdAt));
+  //
+  // Null for an admin, who the service does not count at all: a number would have to be either
+  // wrong or infinite, and neither is worth a line of header.
+  const left = isAdmin
+    ? null
+    : rendersLeftToday(renders.map((r) => r.createdAt));
 
   return (
     <div className="flex min-h-full flex-1">
@@ -184,14 +250,35 @@ export default function Home() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <p
-              className={`text-xs uppercase tracking-[0.2em] ${
-                left === 0 ? "text-red-c" : "text-muted"
+            {/* Says what is in force and goes where it can be changed — the same button whether
+                it reads Free or Studio, so there is one place to look either way. */}
+            <Link
+              href="/pricing"
+              title={
+                me?.me?.subscriptionUntil
+                  ? `Until ${new Date(me.me.subscriptionUntil).toLocaleDateString()}`
+                  : "Plans"
+              }
+              className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.15em] ${
+                awaitingTier
+                  ? "border-yellow-e text-yellow-e"
+                  : tier === SubscriptionTier.Free
+                    ? "border-rule text-muted hover:border-yellow-e hover:text-yellow-e"
+                    : "border-green-c text-green-c"
               }`}
-              title="Renders reset at midnight GMT+8"
             >
-              {left}/{DAILY_LIMIT} today
-            </p>
+              {awaitingTier ? "Activating…" : tierLabel(tier)}
+            </Link>
+            {left !== null ? (
+              <p
+                className={`text-xs uppercase tracking-[0.2em] ${
+                  left === 0 ? "text-red-c" : "text-muted"
+                }`}
+                title="Renders reset at midnight GMT+8"
+              >
+                {left}/{DAILY_LIMIT} today
+              </p>
+            ) : null}
             <p
               className={`text-xs uppercase tracking-[0.2em] ${
                 stalled

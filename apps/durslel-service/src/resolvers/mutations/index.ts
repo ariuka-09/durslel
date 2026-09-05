@@ -1,3 +1,4 @@
+export * from './activate-subscription';
 export * from './complete-render';
 export * from './delete-render';
 export * from './start-render';

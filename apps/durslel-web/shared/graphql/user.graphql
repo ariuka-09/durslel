@@ -5,6 +5,8 @@ query Me {
     lastName
     email
     role
+    subscription
+    subscriptionUntil
   }
 }
 
@@ -27,5 +29,7 @@ mutation UpsertUser($input: UpsertUserInput!) {
     lastName
     email
     role
+    subscription
+    subscriptionUntil
   }
 }

@@ -17,7 +17,21 @@ export type Scalars = {
   Timestamp: { input: any; output: any; }
 };
 
-/** What the renderer reports back once manim has finished, or failed. */
+/**
+ * A payment Wire has confirmed. paymentIntent is the id of the intent that paid for it, and is
+ * what makes activation exactly-once: Wire can deliver the same event more than once, and each
+ * delivery must not buy another 30 days.
+ */
+export type ActivateSubscriptionInput = {
+  paymentIntent: Scalars['String']['input'];
+  tier: SubscriptionTier;
+};
+
+/**
+ * What the renderer reports about a job it owns: the outcome once manim has finished or failed,
+ * and before that the move from QUEUED to PENDING as a slot frees. Every field except status is
+ * about an outcome and stays null on the intermediate writes.
+ */
 export type CompleteRenderInput = {
   attempts?: InputMaybe<Scalars['Int']['input']>;
   durationMs?: InputMaybe<Scalars['Int']['input']>;
@@ -30,8 +44,18 @@ export type CompleteRenderInput = {
 export type Mutation = {
   __typename?: 'Mutation';
   /**
-   * Records the outcome. Called by the renderer, not by a browser: it runs after the request that
-   * started it is long gone, so it authenticates as the service.
+   * Records a paid subscription for the user the caller is acting for, extending any period still
+   * running rather than replacing it.
+   *
+   * Callable only by the deployment itself, with the shared secret — never from a browser, where
+   * it would be a button that grants a paid tier for free. The webhook that calls it acts on a
+   * signature-verified Wire event, long after the buyer's own session has gone.
+   */
+  activateSubscription: User;
+  /**
+   * Records where a render has got to. Called by the renderer, not by a browser: it runs after the
+   * request that started it is long gone, so it authenticates as the service. Usually the final
+   * outcome, but also the QUEUED and PENDING transitions while a job waits for a slot.
    */
   completeRender: Render;
   deleteRender: Response;
@@ -48,6 +72,11 @@ export type Mutation = {
    * write another user nor promote one.
    */
   upsertUser: User;
+};
+
+
+export type MutationActivateSubscriptionArgs = {
+  input: ActivateSubscriptionInput;
 };
 
 
@@ -145,7 +174,14 @@ export type Render = {
 export enum RenderStatus {
   Failed = 'FAILED',
   Ok = 'OK',
-  Pending = 'PENDING'
+  Pending = 'PENDING',
+  /**
+   * Accepted, but waiting for a free render slot. The renderer runs a fixed number of manim
+   * processes at once because manim is single-threaded, so a burst queues rather than all
+   * starting at once and finishing later. Distinct from PENDING so a client can say why nothing
+   * is happening yet, and so it does not start counting a stall against a job that has not begun.
+   */
+  Queued = 'QUEUED'
 }
 
 export enum Response {
@@ -159,6 +195,21 @@ export enum Response {
 export enum Role {
   Admin = 'ADMIN',
   User = 'USER'
+}
+
+/**
+ * What a person is paying for. FREE is the default and the only tier nobody buys; the rest are
+ * granted by a confirmed Wire payment and last 30 days from it.
+ *
+ * Read from User.subscription, which reports FREE once the paid period has run out — the stored
+ * tier is not cleared on expiry, so a lapsed subscriber keeps their history and their old tier
+ * reappears if they pay again.
+ */
+export enum SubscriptionTier {
+  Basic = 'BASIC',
+  Free = 'FREE',
+  Pro = 'PRO',
+  Studio = 'STUDIO'
 }
 
 export type UpdateRenderInput = {
@@ -183,6 +234,13 @@ export type User = {
   id: Scalars['ID']['output'];
   lastName?: Maybe<Scalars['String']['output']>;
   role: Role;
+  /**
+   * The tier in force right now: FREE once subscriptionUntil has passed, whatever was bought
+   * until then.
+   */
+  subscription: SubscriptionTier;
+  /** When the paid period ends. Null for someone who has never paid. */
+  subscriptionUntil?: Maybe<Scalars['Timestamp']['output']>;
   updatedAt: Scalars['Timestamp']['output'];
 };
 
@@ -253,6 +311,7 @@ export type DirectiveResolverFn<TResult = {}, TParent = {}, TContext = {}, TArgs
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
+  ActivateSubscriptionInput: ActivateSubscriptionInput;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   CompleteRenderInput: CompleteRenderInput;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
@@ -264,6 +323,7 @@ export type ResolversTypes = {
   Response: Response;
   Role: Role;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
+  SubscriptionTier: SubscriptionTier;
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
   UpdateRenderInput: UpdateRenderInput;
   UpsertUserInput: UpsertUserInput;
@@ -272,6 +332,7 @@ export type ResolversTypes = {
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
+  ActivateSubscriptionInput: ActivateSubscriptionInput;
   Boolean: Scalars['Boolean']['output'];
   CompleteRenderInput: CompleteRenderInput;
   ID: Scalars['ID']['output'];
@@ -287,6 +348,7 @@ export type ResolversParentTypes = {
 };
 
 export type MutationResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
+  activateSubscription?: Resolver<ResolversTypes['User'], ParentType, ContextType, RequireFields<MutationActivateSubscriptionArgs, 'input'>>;
   completeRender?: Resolver<ResolversTypes['Render'], ParentType, ContextType, RequireFields<MutationCompleteRenderArgs, 'input' | 'jobId'>>;
   deleteRender?: Resolver<ResolversTypes['Response'], ParentType, ContextType, RequireFields<MutationDeleteRenderArgs, 'id'>>;
   startRender?: Resolver<ResolversTypes['Render'], ParentType, ContextType, RequireFields<MutationStartRenderArgs, 'prompt'>>;
@@ -331,6 +393,8 @@ export type UserResolvers<ContextType = Context, ParentType extends ResolversPar
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lastName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   role?: Resolver<ResolversTypes['Role'], ParentType, ContextType>;
+  subscription?: Resolver<ResolversTypes['SubscriptionTier'], ParentType, ContextType>;
+  subscriptionUntil?: Resolver<Maybe<ResolversTypes['Timestamp']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };

@@ -47,6 +47,25 @@ Return exactly one Python file in a single ```python fenced block. No prose befo
 7. **Total runtime under 60 seconds.** Keep `run_time` values modest and don't loop dozens of
    `self.play` calls.
 8. End with `self.wait(1)` so the final frame holds.
+9. **Never let two pieces of text share the same space.** Overlapping labels are the most common
+   way a scene comes out unreadable even when it renders without a single error.
+   - One anchor, one mobject. `to_corner(UR)` used twice in a scene means the second sits on top
+     of the first. Clear a slot before reusing it: `self.play(FadeOut(old), Write(new))`, or
+     `Transform(old, new)` when the two are related.
+   - An `always_redraw` label stays on screen until you `self.remove(...)` it. A tracker readout
+     left in `UR` will collide with every title that comes after it.
+   - Stack related lines as one group rather than positioning each separately:
+     `VGroup(a, b, c).arrange(DOWN, buff=0.35, aligned_edge=LEFT).to_corner(UL)`.
+   - Anchor a label to the thing it labels — `label.next_to(dot, UR, buff=0.2)` — not to a fixed
+     coordinate that a moving object will later wander into.
+   - Keep text out of the plot area: titles at `to_edge(UP)`, readouts in a corner, axis labels
+     just outside the axes. Never place a `Text` near the origin while a graph is being drawn.
+   - **The bottom edge already belongs to the x-axis label.** A narrative caption placed with
+     `to_edge(DOWN)` lands on top of it — this is the collision that happens most often in
+     practice. Put the caption under the title instead, `to_edge(UP).shift(DOWN * 0.7)`, or in a
+     corner the plot does not reach.
+   - `font_size` at most 36 for titles and 28 for readouts. If a line is too wide for the frame,
+     shorten the wording — do not shrink below 20, which stops being legible in the video.
 
 ## Style
 

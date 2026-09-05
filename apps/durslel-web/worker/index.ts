@@ -10,7 +10,9 @@ interface Env {
   VIDEOS: R2Bucket;
 
   GEMINI_API_KEY: string;
+  /** Both optional: lib/generate.ts owns the defaults, these only override them. */
   GEMINI_MODEL?: string;
+  GEMINI_THINKING_LEVEL?: string;
   CLERK_SECRET_KEY: string;
 
   R2_ACCOUNT_ID: string;
@@ -20,32 +22,62 @@ interface Env {
 
   /** Where the app's route handlers send GraphQL. Points at the durslel-service Worker. */
   GRAPHQL_URL?: string;
+
+  /** Wire (payments). sk_test_ routes to the sandbox operator; sk_live_ needs WIRE_OPERATORS. */
+  WIRE_API_KEY?: string;
+  /** Opt-in for a live key, set per environment in wrangler.jsonc. See lib/wire.ts. */
+  WIRE_ALLOW_LIVE?: string;
+  WIRE_OPERATORS?: string;
+  /** Public origin of this app, for the URL Wire returns the buyer to. */
+  APP_ORIGIN?: string;
+  /** Signing secret (whsec_…) for the endpoint registered with Wire. Shown once, at creation. */
+  WIRE_WEBHOOK_SECRET?: string;
 }
 
 export class ManimContainer extends Container<Env> {
   defaultPort = 3000;
 
-  // A render is ~5-60s, but the image is large and a cold start is slow. Staying up for 20
-  // minutes of inactivity means a session of consecutive prompts pays that cost once.
-  sleepAfter = "20m";
+  // Memory bills for the whole time the instance is up, idle included, while CPU bills only on
+  // use — so this idle tail is the largest single line on the bill. At 20 minutes it cost roughly
+  // ten times the render that preceded it. Five still covers someone iterating, who watches a
+  // render finish and then types the next prompt, without paying for a quarter hour of nothing.
+  //
+  // The trade is cold starts, and the image is large. With a queue in front, a cold start stalls
+  // everyone waiting behind it — measure a real boot before shortening this any further.
+  sleepAfter = "5m";
 
   // Secrets reach the container only through here. They are set with `wrangler secret put`,
   // never committed. `envVars` is a plain property on the base class, so it has to be assigned
   // after super() rather than declared as a getter.
   constructor(ctx: DurableObjectState<Env>, env: Env) {
     super(ctx, env);
-    this.envVars = {
-      GEMINI_API_KEY: env.GEMINI_API_KEY,
-      GEMINI_MODEL: env.GEMINI_MODEL ?? "gemini-3-flash-preview",
-      CLERK_SECRET_KEY: env.CLERK_SECRET_KEY,
-      R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
-      R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
-      R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
-      R2_BUCKET: env.R2_BUCKET,
-      // Set per environment in wrangler.jsonc rather than baked in. Omitted rather than passed
-      // empty when unset: lib/graphql.ts falls back with `??`, which an empty string defeats.
-      ...(env.GRAPHQL_URL ? { GRAPHQL_URL: env.GRAPHQL_URL } : {}),
-    };
+    // Unset entries are dropped rather than forwarded. A missing secret otherwise reaches the
+    // container as the string "undefined", which is truthy — and lib/storage.ts decides whether
+    // R2 is configured by truthiness, so four "undefined"s look exactly like a working setup and
+    // every video read fails as a 500 instead of a clean 404. It is the same reason the optional
+    // vars below were already being omitted rather than passed empty: lib/graphql.ts and
+    // lib/wire.ts fall back with `??`, which any non-undefined value defeats.
+    //
+    // GEMINI_MODEL carries no default here on purpose. lib/generate.ts owns it, and naming a
+    // second default at this layer is how a container stays pinned to a model the app has left.
+    this.envVars = Object.fromEntries(
+      Object.entries({
+        GEMINI_API_KEY: env.GEMINI_API_KEY,
+        CLERK_SECRET_KEY: env.CLERK_SECRET_KEY,
+        R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET: env.R2_BUCKET,
+        GEMINI_MODEL: env.GEMINI_MODEL,
+        GEMINI_THINKING_LEVEL: env.GEMINI_THINKING_LEVEL,
+        GRAPHQL_URL: env.GRAPHQL_URL,
+        WIRE_API_KEY: env.WIRE_API_KEY,
+        WIRE_ALLOW_LIVE: env.WIRE_ALLOW_LIVE,
+        WIRE_OPERATORS: env.WIRE_OPERATORS,
+        APP_ORIGIN: env.APP_ORIGIN,
+        WIRE_WEBHOOK_SECRET: env.WIRE_WEBHOOK_SECRET,
+      }).filter(([, value]) => value !== undefined),
+    ) as Record<string, string>;
   }
 
   override onError(error: unknown) {

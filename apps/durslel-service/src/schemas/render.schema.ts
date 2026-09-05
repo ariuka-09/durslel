@@ -2,6 +2,13 @@ import { gql } from 'graphql-tag';
 
 export const renderTypeDefs = gql`
   enum RenderStatus {
+    """
+    Accepted, but waiting for a free render slot. The renderer runs a fixed number of manim
+    processes at once because manim is single-threaded, so a burst queues rather than all
+    starting at once and finishing later. Distinct from PENDING so a client can say why nothing
+    is happening yet, and so it does not start counting a stall against a job that has not begun.
+    """
+    QUEUED
     PENDING
     OK
     FAILED
@@ -39,7 +46,9 @@ export const renderTypeDefs = gql`
   }
 
   """
-  What the renderer reports back once manim has finished, or failed.
+  What the renderer reports about a job it owns: the outcome once manim has finished or failed,
+  and before that the move from QUEUED to PENDING as a slot frees. Every field except status is
+  about an outcome and stays null on the intermediate writes.
   """
   input CompleteRenderInput {
     url: String
@@ -75,8 +84,9 @@ export const renderTypeDefs = gql`
     """
     startRender(prompt: String!): Render!
     """
-    Records the outcome. Called by the renderer, not by a browser: it runs after the request that
-    started it is long gone, so it authenticates as the service.
+    Records where a render has got to. Called by the renderer, not by a browser: it runs after the
+    request that started it is long gone, so it authenticates as the service. Usually the final
+    outcome, but also the QUEUED and PENDING transitions while a job waits for a slot.
     """
     completeRender(jobId: String!, input: CompleteRenderInput!): Render!
     updateRender(id: ID!, input: UpdateRenderInput!): Render!

@@ -18,7 +18,21 @@ export type Scalars = {
   Timestamp: { input: number; output: number; }
 };
 
-/** What the renderer reports back once manim has finished, or failed. */
+/**
+ * A payment Wire has confirmed. paymentIntent is the id of the intent that paid for it, and is
+ * what makes activation exactly-once: Wire can deliver the same event more than once, and each
+ * delivery must not buy another 30 days.
+ */
+export type ActivateSubscriptionInput = {
+  paymentIntent: Scalars['String']['input'];
+  tier: SubscriptionTier;
+};
+
+/**
+ * What the renderer reports about a job it owns: the outcome once manim has finished or failed,
+ * and before that the move from QUEUED to PENDING as a slot frees. Every field except status is
+ * about an outcome and stays null on the intermediate writes.
+ */
 export type CompleteRenderInput = {
   attempts?: InputMaybe<Scalars['Int']['input']>;
   durationMs?: InputMaybe<Scalars['Int']['input']>;
@@ -31,8 +45,18 @@ export type CompleteRenderInput = {
 export type Mutation = {
   __typename?: 'Mutation';
   /**
-   * Records the outcome. Called by the renderer, not by a browser: it runs after the request that
-   * started it is long gone, so it authenticates as the service.
+   * Records a paid subscription for the user the caller is acting for, extending any period still
+   * running rather than replacing it.
+   *
+   * Callable only by the deployment itself, with the shared secret — never from a browser, where
+   * it would be a button that grants a paid tier for free. The webhook that calls it acts on a
+   * signature-verified Wire event, long after the buyer's own session has gone.
+   */
+  activateSubscription: User;
+  /**
+   * Records where a render has got to. Called by the renderer, not by a browser: it runs after the
+   * request that started it is long gone, so it authenticates as the service. Usually the final
+   * outcome, but also the QUEUED and PENDING transitions while a job waits for a slot.
    */
   completeRender: Render;
   deleteRender: Response;
@@ -49,6 +73,11 @@ export type Mutation = {
    * write another user nor promote one.
    */
   upsertUser: User;
+};
+
+
+export type MutationActivateSubscriptionArgs = {
+  input: ActivateSubscriptionInput;
 };
 
 
@@ -146,7 +175,14 @@ export type Render = {
 export enum RenderStatus {
   Failed = 'FAILED',
   Ok = 'OK',
-  Pending = 'PENDING'
+  Pending = 'PENDING',
+  /**
+   * Accepted, but waiting for a free render slot. The renderer runs a fixed number of manim
+   * processes at once because manim is single-threaded, so a burst queues rather than all
+   * starting at once and finishing later. Distinct from PENDING so a client can say why nothing
+   * is happening yet, and so it does not start counting a stall against a job that has not begun.
+   */
+  Queued = 'QUEUED'
 }
 
 export enum Response {
@@ -160,6 +196,21 @@ export enum Response {
 export enum Role {
   Admin = 'ADMIN',
   User = 'USER'
+}
+
+/**
+ * What a person is paying for. FREE is the default and the only tier nobody buys; the rest are
+ * granted by a confirmed Wire payment and last 30 days from it.
+ *
+ * Read from User.subscription, which reports FREE once the paid period has run out — the stored
+ * tier is not cleared on expiry, so a lapsed subscriber keeps their history and their old tier
+ * reappears if they pay again.
+ */
+export enum SubscriptionTier {
+  Basic = 'BASIC',
+  Free = 'FREE',
+  Pro = 'PRO',
+  Studio = 'STUDIO'
 }
 
 export type UpdateRenderInput = {
@@ -184,6 +235,13 @@ export type User = {
   id: Scalars['ID']['output'];
   lastName?: Maybe<Scalars['String']['output']>;
   role: Role;
+  /**
+   * The tier in force right now: FREE once subscriptionUntil has passed, whatever was bought
+   * until then.
+   */
+  subscription: SubscriptionTier;
+  /** When the paid period ends. Null for someone who has never paid. */
+  subscriptionUntil?: Maybe<Scalars['Timestamp']['output']>;
   updatedAt: Scalars['Timestamp']['output'];
 };
 
@@ -218,7 +276,7 @@ export type DeleteRenderMutation = { __typename?: 'Mutation', deleteRender: Resp
 export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MeQuery = { __typename?: 'Query', me?: { __typename?: 'User', id: string, firstName?: string | null, lastName?: string | null, email?: string | null, role: Role } | null };
+export type MeQuery = { __typename?: 'Query', me?: { __typename?: 'User', id: string, firstName?: string | null, lastName?: string | null, email?: string | null, role: Role, subscription: SubscriptionTier, subscriptionUntil?: number | null } | null };
 
 export type UsersQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -230,7 +288,7 @@ export type UpsertUserMutationVariables = Exact<{
 }>;
 
 
-export type UpsertUserMutation = { __typename?: 'Mutation', upsertUser: { __typename?: 'User', id: string, firstName?: string | null, lastName?: string | null, email?: string | null, role: Role } };
+export type UpsertUserMutation = { __typename?: 'Mutation', upsertUser: { __typename?: 'User', id: string, firstName?: string | null, lastName?: string | null, email?: string | null, role: Role, subscription: SubscriptionTier, subscriptionUntil?: number | null } };
 
 
 export const GetRendersDocument = gql`
@@ -406,6 +464,8 @@ export const MeDocument = gql`
     lastName
     email
     role
+    subscription
+    subscriptionUntil
   }
 }
     `;
@@ -493,6 +553,8 @@ export const UpsertUserDocument = gql`
     lastName
     email
     role
+    subscription
+    subscriptionUntil
   }
 }
     `;

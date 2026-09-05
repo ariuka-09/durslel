@@ -5,6 +5,7 @@ import { generateScene, type Attempt } from "@/lib/generate";
 import { summarize, type RenderError } from "@/lib/errors";
 import { graphqlAsService } from "@/lib/graphql";
 import { precheck } from "@/lib/precheck";
+import { acquire, QueueFull, stats } from "@/lib/queue";
 import { extractSceneClass, renderScene } from "@/lib/render";
 import { publishJob, RENDERS_DIR } from "@/lib/storage";
 
@@ -93,6 +94,55 @@ export async function POST(request: Request) {
 }
 
 async function run(jobId: string, prompt: string, userId: string): Promise<void> {
+  // Wait for a slot before doing anything else. Four renders at once each get a core to
+  // themselves; a fifth admitted alongside them would only slow the four already going, so it
+  // waits here. The row stays PENDING meanwhile, which is what the browser is already polling.
+  let release: () => void;
+  try {
+    // stats() and acquire() with no await between them is deliberate: JS is single-threaded, so
+    // a slot free at the check is still free at the take. Only the waiting path can afford the
+    // round trip to mark the row, and on that path a slot freeing meanwhile is harmless — the
+    // row simply flickers QUEUED then PENDING.
+    const before = stats();
+    if (before.active >= before.limit) {
+      console.log(`${jobId} queued: ${before.active} running, ${before.waiting} ahead of it`);
+      // Waiting is not working, and the row has to say so. Without this the browser cannot tell
+      // a job queued behind four others from one manim is actively rendering, and it starts
+      // counting its stall timeout against time this job has not been given yet.
+      await complete(jobId, userId, { status: "QUEUED" });
+      release = await acquire();
+      // Back to PENDING the instant a slot is ours. This is what restarts the client's stall
+      // clock, so it measures the render rather than the wait in front of it.
+      await complete(jobId, userId, { status: "PENDING" });
+    } else {
+      release = await acquire();
+    }
+  } catch (e) {
+    if (!(e instanceof QueueFull)) throw e;
+    await complete(jobId, userId, {
+      status: "FAILED",
+      error: "Too many renders are queued right now. Try again in a few minutes.",
+      attempts: 0,
+      durationMs: 0,
+    });
+    return;
+  }
+
+  try {
+    await render(jobId, prompt, userId);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * The render itself, holding a slot for its whole duration.
+ *
+ * Split out from `run` so the budget clock below starts after the wait for a slot rather than
+ * before it. Started at `run` entry, a job that queued for two minutes would reach its first
+ * attempt with most of its four already spent, and fail for lack of time it never had.
+ */
+async function render(jobId: string, prompt: string, userId: string): Promise<void> {
   const startedAt = Date.now();
   const jobDir = path.join(RENDERS_DIR, jobId);
   await mkdir(jobDir, { recursive: true });

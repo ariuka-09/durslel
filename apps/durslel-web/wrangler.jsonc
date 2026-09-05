@@ -36,11 +36,24 @@
   //
   // No D1 binding anywhere here on purpose: the database belongs to durslel-service.
   "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos-test" }],
-  "vars": { "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql" },
+  // APP_ORIGIN is where Wire sends the buyer back after checkout. It cannot be derived from the
+  // request: inside the container the Host is the container's own 0.0.0.0:3000, which is what
+  // sent buyers to https://0.0.0.0:3000/?paid=BASIC instead of back to the app.
+  "vars": {
+    "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql",
+    "APP_ORIGIN": "https://dursel-web-test.ariuntuguldur3.workers.dev"
+  },
 
   "env": {
-    // One container rather than two: nobody queues behind anybody on a test deployment, and the
-    // GiB-hours it would burn are the same ones production needs.
+    // One container, sized for four concurrent renders rather than scaled out to more instances.
+    // manim is single-threaded (1.09 CPU-seconds per wall-second, measured), so a render can only
+    // occupy one core: standard-3's two cores carry four at roughly 13s of manim each, where
+    // standard-1's half core would take about 51s. A fifth waits in lib/queue.ts rather than
+    // stealing time from the four already going.
+    //
+    // Vertical rather than horizontal because CPU bills on use while memory bills for uptime: a
+    // bigger box costs the same CPU for the same work, whereas a second instance would add a
+    // second idle tail and a second cold start of a 438 MB image.
     "test": {
       "name": "dursel-web-test",
       "containers": [
@@ -48,7 +61,7 @@
           "class_name": "ManimContainer",
           "image": "./Dockerfile",
           "image_build_context": "../..",
-          "instance_type": "standard-1",
+          "instance_type": "standard-3",
           "max_instances": 1
         }
       ],
@@ -57,7 +70,16 @@
       // Read by lib/graphql.ts inside the container. Without it the code falls back to its
       // hardcoded production default, and the test app would write renders into the production
       // database. worker/index.ts is what forwards it into the container's environment.
-      "vars": { "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql" }
+      //
+      // WIRE_ALLOW_LIVE lifts the guard in lib/wire.ts, which otherwise refuses an sk_live_ key.
+      // Deliberate: Wire issues no test key for this account, so the only way to exercise payments
+      // is the live one. Every checkout link this deployment mints is payable with real money.
+      // Production has no such var — there the guard is meant to stay on until a real decision.
+      "vars": {
+        "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql",
+        "APP_ORIGIN": "https://dursel-web-test.ariuntuguldur3.workers.dev",
+        "WIRE_ALLOW_LIVE": "1"
+      }
     },
 
     // `name` is pinned rather than left to wrangler, which would otherwise append the environment
@@ -87,7 +109,10 @@
       ],
       "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
       "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos" }],
-      "vars": { "GRAPHQL_URL": "https://dursel-service.ariuntuguldur3.workers.dev/graphql" }
+      "vars": {
+        "GRAPHQL_URL": "https://dursel-service.ariuntuguldur3.workers.dev/graphql",
+        "APP_ORIGIN": "https://dursel-web.ariuntuguldur3.workers.dev"
+      }
     }
   }
 }

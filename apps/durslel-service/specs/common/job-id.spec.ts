@@ -10,17 +10,28 @@ describe('makeJobId', () => {
     expect(makeJobId('anything')).toMatch(/^\d{14}-/);
   });
 
-  it('slugs the prompt after the timestamp', () => {
-    expect(makeJobId('Plot sin(x)').slice(15)).toBe('plot-sin-x');
+  it('slugs the prompt between the timestamp and the random tail', () => {
+    expect(makeJobId('Plot sin(x)')).toMatch(/^\d{14}-plot-sin-x-[0-9a-z]{6}$/);
   });
 
   /** A prompt with nothing sluggable still needs an id. */
   it('falls back to "scene" when the prompt slugs to nothing', () => {
-    expect(makeJobId('!!!').slice(15)).toBe('scene');
+    expect(makeJobId('!!!')).toMatch(/^\d{14}-scene-[0-9a-z]{6}$/);
   });
 
   it('caps the slug so the id cannot grow without bound', () => {
-    expect(makeJobId('x'.repeat(200)).slice(15)).toHaveLength(40);
+    expect(makeJobId('x'.repeat(200)).slice(15, 55)).toHaveLength(40);
+    expect(makeJobId('x'.repeat(200))).toMatch(/^\d{14}-x{40}-[0-9a-z]{6}$/);
+  });
+
+  /**
+   * The id is a job directory and an R2 prefix. Without the random tail, two people submitting
+   * the same prompt in the same second get the same one, and one render overwrites the other.
+   */
+  it('does not collide for the same prompt within the same second', () => {
+    const ids = new Set(Array.from({ length: 200 }, () => makeJobId('same prompt')));
+
+    expect(ids.size).toBe(200);
   });
 });
 
