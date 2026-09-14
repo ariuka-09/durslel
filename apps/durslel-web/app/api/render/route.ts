@@ -157,7 +157,9 @@ async function render(jobId: string, prompt: string, userId: string): Promise<vo
     const attemptDir = path.join(jobDir, `attempt-${attempt}`);
     await mkdir(attemptDir, { recursive: true });
 
-    const generated = await generateScene(prompt, attempt, previous);
+    // The clock this attempt actually has. Passed down so a hung Gemini call is cut off by the
+    // same budget the loop measures, rather than outliving the render that is waiting on it.
+    const generated = await generateScene(prompt, attempt, previous, BUDGET_MS - (Date.now() - startedAt));
     if ("error" in generated) {
       await keepEvidence(jobId, jobDir, attempt, generated.error);
       lastError = summarize(generated.error);

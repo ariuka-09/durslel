@@ -42,6 +42,12 @@ export const userTypeDefs = gql`
     subscription: SubscriptionTier!
     """When the paid period ends. Null for someone who has never paid."""
     subscriptionUntil: Timestamp
+    """
+    Renders this account may start per day, which is what a subscription buys. Follows the tier
+    in force, so it drops back to the FREE allowance the moment a paid period ends. Served from
+    here so the browser and startRender cannot disagree about it.
+    """
+    dailyLimit: Int!
     createdAt: Timestamp!
     updatedAt: Timestamp!
   }

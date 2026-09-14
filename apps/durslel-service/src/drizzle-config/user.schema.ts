@@ -52,3 +52,13 @@ export const userTable = sqliteTable('users', {
     .default(sql`(unixepoch() * 1000)`)
     .notNull(),
 });
+
+/**
+ * A user as the database holds one — no computed fields.
+ *
+ * Named here because codegen maps the GraphQL `User` onto it: resolvers return rows, and anything
+ * the schema exposes that is not a column (subscription's expiry, dailyLimit) is filled in by a
+ * field resolver. Without the mapping, adding a computed field to the schema breaks every
+ * resolver that returns a row.
+ */
+export type UserRow = typeof userTable.$inferSelect;

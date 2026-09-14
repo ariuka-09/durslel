@@ -1,4 +1,4 @@
-import { DAILY_LIMIT, dayStart, formatDate, makeTitle, rendersLeftToday } from '@/lib/jobs';
+import { FREE_DAILY_LIMIT, dayStart, formatDate, makeTitle, rendersLeftToday } from '@/lib/jobs';
 
 describe('makeTitle', () => {
   it('is the prompt, whitespace collapsed', () => {
@@ -47,19 +47,29 @@ describe('rendersLeftToday', () => {
   });
 
   it('is the full limit when nothing was rendered today', () => {
-    expect(rendersLeftToday([], noon)).toBe(DAILY_LIMIT);
+    expect(rendersLeftToday([], FREE_DAILY_LIMIT, noon)).toBe(FREE_DAILY_LIMIT);
   });
 
   it('ignores renders from before the reset', () => {
-    expect(rendersLeftToday([midnightGmt8 - 1], noon)).toBe(DAILY_LIMIT);
+    expect(rendersLeftToday([midnightGmt8 - 1], FREE_DAILY_LIMIT, noon)).toBe(FREE_DAILY_LIMIT);
   });
 
   it('counts a render made exactly at the reset', () => {
-    expect(rendersLeftToday([midnightGmt8], noon)).toBe(DAILY_LIMIT - 1);
+    expect(rendersLeftToday([midnightGmt8], FREE_DAILY_LIMIT, noon)).toBe(FREE_DAILY_LIMIT - 1);
+  });
+
+  /** What a subscription buys: the same history against a bigger ceiling leaves more. */
+  it('counts against the limit it is given, not a constant', () => {
+    expect(rendersLeftToday([noon, noon, noon], 30, noon)).toBe(27);
+  });
+
+  /** A subscription ending mid-day lowers the ceiling under renders already made. */
+  it('never reads below zero', () => {
+    expect(rendersLeftToday([noon, noon, noon, noon], FREE_DAILY_LIMIT, noon)).toBe(0);
   });
 
   /** The server counts failed renders too, so more rows than the limit is a reachable state. */
   it('never reads below zero', () => {
-    expect(rendersLeftToday(Array(DAILY_LIMIT + 2).fill(noon), noon)).toBe(0);
+    expect(rendersLeftToday(Array(FREE_DAILY_LIMIT + 2).fill(noon), FREE_DAILY_LIMIT, noon)).toBe(0);
   });
 });

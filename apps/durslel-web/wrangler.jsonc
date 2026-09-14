@@ -78,7 +78,16 @@
       "vars": {
         "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql",
         "APP_ORIGIN": "https://dursel-web-test.ariuntuguldur3.workers.dev",
-        "WIRE_ALLOW_LIVE": "1"
+        "WIRE_ALLOW_LIVE": "1",
+      // Overrides the LOW default in lib/generate.ts. LOW was chosen for latency — measured at
+      // 5-9s and zero thinking tokens against 22.8s at default effort — but it is also why scenes
+      // that need any reasoning about the manim API come back wrong and get rerolled, and a
+      // reroll costs another Gemini call AND another render. MEDIUM buys that reasoning back for
+      // roughly 15s inside a 240s budget.
+      //
+      // Watch the reroll rate rather than the per-call latency: this is a win only if attempts
+      // per render go down. Set back to LOW here if they do not.
+        "GEMINI_THINKING_LEVEL": "MEDIUM"
       }
     },
 
@@ -103,7 +112,14 @@
           "class_name": "ManimContainer",
           "image": "./Dockerfile",
           "image_build_context": "../..",
-          "instance_type": "standard-1",
+          // Matches the test block, and for the same reason: MAX_CONCURRENT_RENDERS=4 is baked
+          // into the Dockerfile, so lib/queue.ts admits four renders here regardless of the box
+          // underneath. standard-1's half core split four ways ran each of them at roughly 51s
+          // of manim against a 90s per-attempt timeout and a 240s job budget — one reroll and
+          // the job was out of time. standard-3's two cores carry the same four at about 13s.
+          "instance_type": "standard-3",
+          // Nothing addresses a second instance: worker/index.ts routes every request to
+          // MANIM.getByName("studio"), a single Durable Object. Left at 2 for deploy rollover.
           "max_instances": 2
         }
       ],
@@ -111,7 +127,16 @@
       "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos" }],
       "vars": {
         "GRAPHQL_URL": "https://dursel-service.ariuntuguldur3.workers.dev/graphql",
-        "APP_ORIGIN": "https://dursel-web.ariuntuguldur3.workers.dev"
+        "APP_ORIGIN": "https://dursel-web.ariuntuguldur3.workers.dev",
+      // Overrides the LOW default in lib/generate.ts. LOW was chosen for latency — measured at
+      // 5-9s and zero thinking tokens against 22.8s at default effort — but it is also why scenes
+      // that need any reasoning about the manim API come back wrong and get rerolled, and a
+      // reroll costs another Gemini call AND another render. MEDIUM buys that reasoning back for
+      // roughly 15s inside a 240s budget.
+      //
+      // Watch the reroll rate rather than the per-call latency: this is a win only if attempts
+      // per render go down. Set back to LOW here if they do not.
+        "GEMINI_THINKING_LEVEL": "MEDIUM"
       }
     }
   }

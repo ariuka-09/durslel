@@ -47,9 +47,17 @@ export const render = {
 
 export const written: Record<string, unknown>[] = [];
 
+/** Every `where` clause the resolver built, so a spec can assert what it filtered on. */
+export const filters: unknown[] = [];
+
 const fakeDb = (rows: unknown[]) => {
   const link: Record<string, unknown> = { then: (resolve: (_value: unknown) => void) => resolve(rows) };
-  for (const name of ['from', 'orderBy', 'where', 'returning']) link[name] = () => link;
+  for (const name of ['from', 'orderBy', 'returning']) link[name] = () => link;
+  link.where = (clause: unknown) => {
+    filters.push(clause);
+
+    return link;
+  };
   for (const name of ['values', 'set']) {
     link[name] = (value: Record<string, unknown>) => {
       written.push(value);
@@ -72,6 +80,7 @@ const fakeDb = (rows: unknown[]) => {
 export const returning = (rows: unknown[]) => {
   written.length = 0;
   waited.length = 0;
+  filters.length = 0;
   // Call history does not reset between tests on its own, so without this a spec asserting that
   // a resolver never reached the database would be reading the previous test's call.
   jest.mocked(drizzleProvider).mockClear();

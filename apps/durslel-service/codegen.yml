@@ -7,6 +7,12 @@ generates:
       - typescript-resolvers
     config:
       contextType: Context
+      # Resolvers return database rows; the schema's computed fields (User.subscription applying
+      # its expiry, User.dailyLimit from the tier) are filled in by field resolvers. Without this
+      # mapping every resolver returning a row fails to typecheck the moment the schema grows a
+      # field that is not a column.
+      mappers:
+        User: '../drizzle-config#UserRow'
       makeResolverTypeCallable: true
       maybeValue: T | null
       inputMaybeValue: T

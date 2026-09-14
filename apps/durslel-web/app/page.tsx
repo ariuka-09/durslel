@@ -17,7 +17,7 @@ import {
 import { useIsAdmin } from "@/lib/admin";
 import { tierLabel } from "@/lib/plans";
 import {
-  DAILY_LIMIT,
+  FREE_DAILY_LIMIT,
   STATUS_COLOR,
   STATUS_TEXT,
   formatDate,
@@ -41,6 +41,10 @@ export default function Home() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Reading an uploaded problem. Its own flag rather than a spinner on the render, because
+  // nothing is rendering yet and the daily limit has not been touched.
+  const [reading, setReading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -80,7 +84,11 @@ export default function Home() {
   // Stop polling and refresh the sidebar the moment a render settles.
   useEffect(() => {
     // QUEUED is still in flight, so it must not stop the poll — only OK and FAILED settle a row.
-    if (active && active.status !== RenderStatus.Pending && active.status !== RenderStatus.Queued) {
+    if (
+      active &&
+      active.status !== RenderStatus.Pending &&
+      active.status !== RenderStatus.Queued
+    ) {
       setPending(false);
       void refetchHistory();
     }
@@ -167,15 +175,20 @@ export default function Home() {
     }).catch(() => undefined);
   }, [isSignedIn, user, upsertUser]);
 
-  async function run(e?: { preventDefault?: () => void }) {
-    e?.preventDefault?.();
-    if (!prompt.trim() || starting || pending) return;
+  /**
+   * `text` is passed explicitly by the upload path, which starts a render in the same tick that
+   * it fills the box — `prompt` still holds the old value at that point, so reading state here
+   * would render whatever was typed before the file was picked.
+   */
+  async function run(text: string = prompt) {
+    if (!text.trim() || starting || pending) return;
 
     setCopied(false);
     setStalled(false);
+    setUploadError(null);
     // Apollo rejects on a GraphQL error; the hook's `error` is what renders it, and an
     // unhandled rejection here would take the whole handler down instead.
-    const { data } = await startRender({ variables: { prompt } }).catch(() => ({
+    const { data } = await startRender({ variables: { prompt: text } }).catch(() => ({
       data: null,
     }));
     // The row exists as PENDING before this resolves, so there is something to watch immediately.
@@ -184,6 +197,44 @@ export default function Home() {
       setStalled(false);
       setPending(data.startRender.status === RenderStatus.Pending);
       void refetchHistory();
+    }
+  }
+
+  /**
+   * A photographed or scanned problem, animated.
+   *
+   * /api/solve reads the file and answers with a brief; that brief is then started exactly like a
+   * typed prompt, so the queue, the daily limit, the repair loop and the history all apply to it
+   * without knowing a file was involved. It is also written into the box, so a misread problem is
+   * visible and can be corrected and rerun rather than only explaining itself four minutes later.
+   */
+  async function solve(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Cleared immediately: without this, picking the same file again fires no change event, so a
+    // failed read could not be retried without choosing a different file first.
+    e.target.value = "";
+    if (!file) return;
+
+    setUploadError(null);
+    setReading(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/solve", { method: "POST", body });
+      const json = (await res.json().catch(() => ({}))) as {
+        prompt?: string;
+        error?: string;
+      };
+      if (!res.ok || !json.prompt) {
+        setUploadError(json.error ?? "Could not read that file.");
+        return;
+      }
+      setPrompt(json.prompt);
+      await run(json.prompt);
+    } catch {
+      setUploadError("Could not reach the server.");
+    } finally {
+      setReading(false);
     }
   }
 
@@ -198,8 +249,8 @@ export default function Home() {
           Dur<span className="text-blue-d">slel</span>
         </h1>
         <p className="max-w-sm text-sm text-muted">
-          Describe an animation, get a rendered manim scene. Sign in to render and to keep
-          your renders.
+          Describe an animation, get a rendered manim scene. Sign in to render
+          and to keep your renders.
         </p>
         <SignInButton mode="modal">
           <button className="border border-yellow-e px-6 py-2.5 text-sm uppercase tracking-widest text-yellow-e">
@@ -210,15 +261,23 @@ export default function Home() {
     );
   }
 
-  const busy = starting || pending;
+  const busy = starting || pending || reading;
   // Counted off the history the sidebar already loaded, so it costs no request and refreshes
   // whenever that does — which includes right after a render is started.
   //
   // Null for an admin, who the service does not count at all: a number would have to be either
   // wrong or infinite, and neither is worth a line of header.
+  //
+  // A render that never reached an attempt spent no renderer time and the service does not count
+  // it, so neither does this — otherwise a job killed before it started would show as used here
+  // and not there.
+  const limit = me?.me?.dailyLimit ?? FREE_DAILY_LIMIT;
   const left = isAdmin
     ? null
-    : rendersLeftToday(renders.map((r) => r.createdAt));
+    : rendersLeftToday(
+        renders.filter((r) => r.attempts !== 0).map((r) => r.createdAt),
+        limit,
+      );
 
   return (
     <div className="flex min-h-full flex-1">
@@ -251,24 +310,31 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             {/* Says what is in force and goes where it can be changed — the same button whether
-                it reads Free or Studio, so there is one place to look either way. */}
-            <Link
-              href="/pricing"
-              title={
-                me?.me?.subscriptionUntil
-                  ? `Until ${new Date(me.me.subscriptionUntil).toLocaleDateString()}`
-                  : "Plans"
-              }
-              className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.15em] ${
-                awaitingTier
-                  ? "border-yellow-e text-yellow-e"
-                  : tier === SubscriptionTier.Free
-                    ? "border-rule text-muted hover:border-yellow-e hover:text-yellow-e"
-                    : "border-green-c text-green-c"
-              }`}
-            >
-              {awaitingTier ? "Activating…" : tierLabel(tier)}
-            </Link>
+                it reads Free or Studio, so there is one place to look either way.
+
+                TEMPORARY: hidden while the tier is FREE, so the app shows no upsell to someone
+                who has not paid. Only the pill goes — /pricing and /api/pay stay live, so a
+                direct link still buys a plan, and a subscriber still sees their own tier here.
+                Restore by deleting this condition and the closing brace after the </Link>. */}
+            {tier === SubscriptionTier.Free && !awaitingTier ? null : (
+              <Link
+                href="/pricing"
+                title={
+                  me?.me?.subscriptionUntil
+                    ? `Until ${new Date(me.me.subscriptionUntil).toLocaleDateString()}`
+                    : "Plans"
+                }
+                className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.15em] ${
+                  awaitingTier
+                    ? "border-yellow-e text-yellow-e"
+                    : tier === SubscriptionTier.Free
+                      ? "border-rule text-muted hover:border-yellow-e hover:text-yellow-e"
+                      : "border-green-c text-green-c"
+                }`}
+              >
+                {awaitingTier ? "Activating…" : tierLabel(tier)}
+              </Link>
+            )}
             {left !== null ? (
               <p
                 className={`text-xs uppercase tracking-[0.2em] ${
@@ -276,7 +342,7 @@ export default function Home() {
                 }`}
                 title="Renders reset at midnight GMT+8"
               >
-                {left}/{DAILY_LIMIT} today
+                {left}/{limit} today
               </p>
             ) : null}
             <p
@@ -310,7 +376,33 @@ export default function Home() {
           </div>
         </header>
 
-        <form onSubmit={run} className="flex gap-2 border-b border-rule px-5 py-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run();
+          }}
+          className="flex gap-2 border-b border-rule px-5 py-4"
+        >
+          {/* A photo or scan of a problem, read and solved into the box beside it. A label rather
+              than a button because a file input cannot be styled, and hiding it inside the label
+              is what makes the whole control clickable. */}
+          <label
+            title="Photo or PDF of a problem — it is read, solved, and animated"
+            className={`shrink-0 border px-3 py-2 text-[11px] uppercase tracking-[0.15em] ${
+              busy || left === 0
+                ? "cursor-default border-rule text-muted opacity-30"
+                : "cursor-pointer border-rule text-ink hover:border-blue-d hover:text-blue-d"
+            }`}
+          >
+            {reading ? "Reading…" : "Problem"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf"
+              disabled={busy || left === 0}
+              onChange={solve}
+              className="hidden"
+            />
+          </label>
           <input
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -342,8 +434,19 @@ export default function Home() {
                 render lost
               </p>
               <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
-                Nothing has reported back on this render in five minutes, so it is almost
-                certainly gone. Try the prompt again.
+                Nothing has reported back on this render in five minutes, so it
+                is almost certainly gone. Try the prompt again.
+              </p>
+            </div>
+          ) : null}
+
+          {uploadError ? (
+            <div className="border border-red-c/60">
+              <p className="border-b border-red-c/40 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-red-c">
+                problem not read
+              </p>
+              <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
+                {uploadError}
               </p>
             </div>
           ) : null}
@@ -401,7 +504,11 @@ export default function Home() {
           ) : (
             <div className="flex aspect-video flex-col items-center justify-center gap-4 border border-rule px-8">
               <p className="text-xs uppercase tracking-[0.2em] text-muted">
-                {busy ? "rendering…" : "no video yet"}
+                {reading
+                  ? "reading the problem…"
+                  : busy
+                    ? "rendering…"
+                    : "no video yet"}
               </p>
               {busy ? <ProgressBar /> : null}
             </div>
@@ -473,7 +580,9 @@ function VideoActions({
       </button>
       {/* The shareable URL, visible so it can be read or hand-copied too. */}
       <code className="min-w-0 flex-1 truncate text-[11px] text-muted">
-        {typeof window === "undefined" ? url : new URL(url, window.location.origin).href}
+        {typeof window === "undefined"
+          ? url
+          : new URL(url, window.location.origin).href}
       </code>
     </div>
   );
@@ -527,7 +636,9 @@ function History({
               <span className="flex items-center gap-2 text-[10px] text-muted">
                 {formatDate(createdAt)}
                 {status !== RenderStatus.Ok ? (
-                  <span className={STATUS_COLOR[status]}>{STATUS_TEXT[status]}</span>
+                  <span className={STATUS_COLOR[status]}>
+                    {STATUS_TEXT[status]}
+                  </span>
                 ) : null}
               </span>
             </button>

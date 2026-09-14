@@ -46,6 +46,15 @@ Return exactly one Python file in a single ```python fenced block. No prose befo
    `self.set_camera_orientation(phi=70 * DEGREES, theta=-45 * DEGREES, zoom=0.9)`.
 7. **Total runtime under 60 seconds.** Keep `run_time` values modest and don't loop dozens of
    `self.play` calls.
+   - **Every `Surface` and `Sphere` needs an explicit low `resolution`.** Rendering is cairo on a
+     shared CPU core — there is no GPU — and every quad of the mesh is filled and depth-sorted on
+     every frame, so cost grows with the square of the resolution. Manim's default `(32, 32)` is
+     1024 quads: measured at 10-15 seconds *per animation* on the deployed machine, which spends
+     the whole render budget before the scene ends. Pass `resolution=(12, 12)` — smooth enough at
+     480p and roughly ten times cheaper:
+     `Surface(func, u_range=[0, TAU], v_range=[0, PI], resolution=(12, 12))`
+   - This is about *render* cost, not scene length. Shortening the animation does not fix a mesh
+     that is too fine; only the resolution does.
 8. End with `self.wait(1)` so the final frame holds.
 9. **Never let two pieces of text share the same space.** Overlapping labels are the most common
    way a scene comes out unreadable even when it renders without a single error.

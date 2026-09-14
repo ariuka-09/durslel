@@ -230,6 +230,12 @@ export type UpsertUserInput = {
 export type User = {
   __typename?: 'User';
   createdAt: Scalars['Timestamp']['output'];
+  /**
+   * Renders this account may start per day, which is what a subscription buys. Follows the tier
+   * in force, so it drops back to the FREE allowance the moment a paid period ends. Served from
+   * here so the browser and startRender cannot disagree about it.
+   */
+  dailyLimit: Scalars['Int']['output'];
   email?: Maybe<Scalars['String']['output']>;
   firstName?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
@@ -276,7 +282,7 @@ export type DeleteRenderMutation = { __typename?: 'Mutation', deleteRender: Resp
 export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MeQuery = { __typename?: 'Query', me?: { __typename?: 'User', id: string, firstName?: string | null, lastName?: string | null, email?: string | null, role: Role, subscription: SubscriptionTier, subscriptionUntil?: number | null } | null };
+export type MeQuery = { __typename?: 'Query', me?: { __typename?: 'User', id: string, firstName?: string | null, lastName?: string | null, email?: string | null, role: Role, subscription: SubscriptionTier, subscriptionUntil?: number | null, dailyLimit: number } | null };
 
 export type UsersQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -466,6 +472,7 @@ export const MeDocument = gql`
     role
     subscription
     subscriptionUntil
+    dailyLimit
   }
 }
     `;

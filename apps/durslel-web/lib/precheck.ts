@@ -107,6 +107,36 @@ async function python(): Promise<string> {
 }
 
 /**
+ * A 3D mesh left at manim's default resolution.
+ *
+ * `Surface` and `Sphere` default to `(32, 32)` — 1024 quads, filled and depth-sorted on every
+ * frame by the cairo renderer, since the image ships no GPU path. Measured at 10-15 seconds per
+ * animation on the deployed container, which spends the whole render budget before the scene
+ * ends: a sphere prompt burned three attempts and four minutes twice over on 2026-09-06, each
+ * reroll dying on the per-attempt timeout with nothing to show.
+ *
+ * Caught here rather than left to manim because the difference is 90 seconds against one, and
+ * because the repair prompt then names the actual fix instead of "it timed out".
+ *
+ * ponytail: counts parentheses without tokenising, so a `)` inside a string literal in the
+ * argument list would end the call early. Generated scene code does not do that; if one ever
+ * does, the cost is one wrong rejection and a reroll.
+ */
+function meshWithoutResolution(code: string): string | null {
+  for (const match of code.matchAll(/\b(Surface|Sphere)\s*\(/g)) {
+    let depth = 0;
+    let i = match.index + match[0].length - 1;
+    for (; i < code.length; i++) {
+      if (code[i] === '(') depth++;
+      else if (code[i] === ')' && --depth === 0) break;
+    }
+    if (!/\bresolution\s*=/.test(code.slice(match.index, i))) return match[1];
+  }
+
+  return null;
+}
+
+/**
  * `null` when the code is worth rendering, otherwise the reason, phrased for the repair prompt —
  * the model reads this string verbatim and has to be able to act on it.
  */
@@ -117,6 +147,17 @@ export async function precheck(
   for (const [pattern, why] of BANNED) {
     const hit = code.match(pattern);
     if (hit) return `\`${hit[0]}\` ${why}. Use Text with Unicode maths instead.`;
+  }
+
+  const mesh = meshWithoutResolution(code);
+  if (mesh) {
+    return [
+      `\`${mesh}(...)\` has no \`resolution=\`, so it defaults to (32, 32) — 1024 quads that the`,
+      `cairo renderer fills and depth-sorts on every frame. That takes 10-15 seconds per animation`,
+      `here and the render is killed before the scene ends. Pass \`resolution=(12, 12)\` to every`,
+      `one of them: smooth at 480p and about ten times cheaper. Do not shorten the animation`,
+      `instead — the cost is per frame, so a shorter scene dies exactly the same way.`,
+    ].join(' ');
   }
 
   // The checker needs a file on disk. renderScene writes the same path with the same content, so

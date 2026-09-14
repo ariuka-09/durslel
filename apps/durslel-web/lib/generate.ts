@@ -10,7 +10,7 @@ import { renderError, type RenderError } from "./errors";
 // because the GA alternatives were measured against this system prompt and are worse here:
 // gemini-3.8-flash returned 503 "experiencing high demand" on three of four calls, and
 // gemini-3.5-flash spent 3.1k thinking tokens and 28s on a scene this one writes in 5s.
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
+export const MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
 
 // Left unset, a Gemini 3 model chooses its own thinking effort, and that was where nearly all of
 // a render's wall time went. Measured on this system prompt, same scene:
@@ -27,7 +27,7 @@ const MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
 // another render, so a cheaper thinking level that fails more often is a net loss. Set
 // GEMINI_THINKING_LEVEL to MINIMAL, LOW, MEDIUM or HIGH to A/B it; the enum lookup is what
 // validates it, so an unrecognised value falls back to LOW rather than reaching the API.
-const THINKING_LEVEL: ThinkingLevel =
+export const THINKING_LEVEL: ThinkingLevel =
   ThinkingLevel[
     (process.env.GEMINI_THINKING_LEVEL ?? "LOW").toUpperCase() as keyof typeof ThinkingLevel
   ] ?? ThinkingLevel.LOW;
@@ -88,7 +88,15 @@ export interface Attempt {
 export async function generateScene(
   prompt: string,
   attempt: number,
-  previous?: Attempt,
+  previous: Attempt | undefined,
+  /**
+   * What is left of the render's wall clock. The call is aborted at that point rather than left
+   * to hang: the loop in app/api/render/route.ts only checks the budget *between* attempts, so a
+   * request that never returns is never noticed there — and because the row is only written when
+   * the render ends, a hung call leaves it PENDING for good. That is one of the two ways a render
+   * became immortal on 2026-09-06.
+   */
+  budgetMs: number,
 ): Promise<{ code: string } | { error: RenderError }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -134,6 +142,7 @@ export async function generateScene(
         systemInstruction: system,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         thinkingConfig: { thinkingLevel: THINKING_LEVEL },
+        abortSignal: AbortSignal.timeout(budgetMs),
       },
     });
   } catch (e) {
@@ -197,7 +206,18 @@ export async function generateScene(
   return { code };
 }
 
-function classify(e: unknown, attempt: number): RenderError {
+export function classify(e: unknown, attempt: number): RenderError {
+  // AbortSignal.timeout rejects with a DOMException named TimeoutError, and an abort from
+  // elsewhere with AbortError. Neither is an ApiError, so without this branch both would be
+  // filed as "unexpected error while calling Gemini" and retried until the budget is gone.
+  if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+    return renderError(
+      "timeout",
+      "Gemini did not answer within the time left for this render.",
+      e.stack ?? e.message,
+      attempt,
+    );
+  }
   if (e instanceof ApiError) {
     const raw = `status: ${e.status}\nmessage: ${e.message}`;
     // Google answers a bad key with 400 API_KEY_INVALID, not 401, so status alone would file the

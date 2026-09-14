@@ -73,7 +73,14 @@ export function formatDate(
  * The day ends at midnight GMT+8 (16:00 UTC), not at the viewer's local midnight, so the number
  * shown here is the same one the server will apply.
  */
-export const DAILY_LIMIT = 3;
+/**
+ * What an account with no subscription gets, and the only limit this app knows on its own.
+ *
+ * Every other tier's number lives in the service (common/subscription.ts) and arrives on
+ * User.dailyLimit — a per-tier table cannot be kept in step by copying it here, which is what
+ * the old flat constant did. This is the fallback for the moment before that query answers.
+ */
+export const FREE_DAILY_LIMIT = 3;
 const RESET_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -83,16 +90,20 @@ export function dayStart(now: number = Date.now()): number {
 }
 
 /**
- * Renders still available today, from the timestamps the history query already returns — no extra
+ * Renders still available today, from the history query the sidebar already made — no extra
  * request, and it re-counts on its own every time that query refetches.
  *
- * Clamped at zero: the server counts failed renders too, and a limit lowered later would
- * otherwise show a negative.
+ * `limit` comes from User.dailyLimit rather than a constant here, because how many an account
+ * gets depends on what it pays for.
+ *
+ * Clamped at zero: the server counts failed renders too, and a limit lowered later — or a
+ * subscription ending mid-day — would otherwise show a negative.
  */
 export function rendersLeftToday(
   createdAt: number[],
+  limit: number = FREE_DAILY_LIMIT,
   now: number = Date.now(),
 ): number {
   const since = dayStart(now);
-  return Math.max(0, DAILY_LIMIT - createdAt.filter((ms) => ms >= since).length);
+  return Math.max(0, limit - createdAt.filter((ms) => ms >= since).length);
 }

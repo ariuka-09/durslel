@@ -2,6 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { requireAdmin, requireUser } from '@/common/auth';
 import { drizzleProvider } from '@/common/drizzle-provider';
+import { expireStale } from '@/common/stale-renders';
 import { renderTable } from '@/drizzle-config';
 import { QueryResolvers } from '@/types/generated';
 
@@ -19,7 +20,13 @@ export const getRenders: QueryResolvers['getRenders'] = async (_, { creatorId },
   const db = drizzleProvider(ctx.env);
   const target = creatorId ?? own;
 
-  return db.select().from(renderTable).where(eq(renderTable.creatorId, target)).orderBy(desc(renderTable.createdAt));
+  const rows = await db
+    .select()
+    .from(renderTable)
+    .where(eq(renderTable.creatorId, target))
+    .orderBy(desc(renderTable.createdAt));
+
+  return expireStale(db, rows);
 };
 
 /**
@@ -34,8 +41,13 @@ export const getRender: QueryResolvers['getRender'] = async (_, { id }, { env, u
     .select()
     .from(renderTable)
     .where(and(eq(renderTable.id, id), eq(renderTable.creatorId, creatorId)));
+  if (!row) return null;
 
-  return row ?? null;
+  // This is the query the browser polls while a render runs, so it is where an abandoned one is
+  // most likely to be noticed first.
+  const [reconciled] = await expireStale(db, [row]);
+
+  return reconciled;
 };
 
 export const getRenderByJobId: QueryResolvers['getRenderByJobId'] = async (_, { jobId }, { env, userId }) => {
@@ -46,6 +58,9 @@ export const getRenderByJobId: QueryResolvers['getRenderByJobId'] = async (_, { 
     .select()
     .from(renderTable)
     .where(and(eq(renderTable.jobId, jobId), eq(renderTable.creatorId, creatorId)));
+  if (!row) return null;
 
-  return row ?? null;
+  const [reconciled] = await expireStale(db, [row]);
+
+  return reconciled;
 };

@@ -18,6 +18,13 @@ export interface Plan {
   /** Whole tugriks, as Wire's hosted checkout renders them. */
   price: number;
   blurb: string;
+  /**
+   * Renders a day. Shown on the pricing page so a buyer can see what the money is for — the
+   * service enforces its own copy in common/subscription.ts and is the authority. These two are
+   * the same number in two places on purpose: one is the promise, the other is the limit, and a
+   * pricing page that fetched its own claims would still be making them.
+   */
+  renders: number;
 }
 
 export const PLANS: Plan[] = [
@@ -26,18 +33,21 @@ export const PLANS: Plan[] = [
     name: "Basic",
     price: 500,
     blurb: "For the occasional scene.",
+    renders: 10,
   },
   {
     tier: SubscriptionTier.Pro,
     name: "Pro",
     price: 5_000,
     blurb: "For regular work.",
+    renders: 30,
   },
   {
     tier: SubscriptionTier.Studio,
     name: "Studio",
     price: 10_000,
     blurb: "For a team sharing an account.",
+    renders: 100,
   },
 ];
 

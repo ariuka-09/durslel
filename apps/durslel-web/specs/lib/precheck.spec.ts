@@ -38,6 +38,48 @@ describe("precheck", () => {
     expect(await precheck(await dir(), code)).toMatch(/LaTeX/);
   });
 
+  /**
+   * The failure this was written for: a sphere prompt rerolled three times, each attempt killed
+   * on the render timeout, four minutes spent and nothing produced. The mesh resolution was the
+   * cost every time, and manim's default is the expensive one.
+   */
+  describe("3D meshes left at manim's default resolution", () => {
+    const withMesh = (call: string) =>
+      GOOD.replace("self.wait(1)", `self.add(${call})\n        self.wait(1)`);
+
+    it.each([
+      "Surface(lambda u, v: np.array([u, v, 0]), u_range=[0, 1], v_range=[0, 1])",
+      "Sphere(radius=2)",
+    ])("rejects %s", async (call) => {
+      const reason = await precheck(await dir(), withMesh(call));
+      expect(reason).toMatch(/resolution/);
+      // The old timeout wording sent every reroll off shortening the animation instead, which
+      // cannot help when the cost is per frame.
+      expect(reason).toMatch(/Do not shorten the animation/);
+    });
+
+    it("accepts one that passes an explicit resolution", async () => {
+      const call =
+        "Surface(lambda u, v: np.array([u, v, 0]), u_range=[0, 1], v_range=[0, 1], resolution=(12, 12))";
+      expect(await precheck(await dir(), withMesh(call))).toBeNull();
+    });
+
+    /** Nested calls in the argument list are the normal shape, so the scan has to survive them. */
+    it("reads past nested parentheses to find the resolution", async () => {
+      const call =
+        "Surface(lambda u, v: np.array([np.cos(u), np.sin(v), 0]), u_range=[0, 1], v_range=[0, 1], resolution=(8, 8))";
+      expect(await precheck(await dir(), withMesh(call))).toBeNull();
+    });
+
+    /** One mesh with a resolution does not excuse the next one without. */
+    it("checks every mesh in the file", async () => {
+      const code = withMesh(
+        "Sphere(radius=1, resolution=(12, 12))",
+      ).replace("self.wait(1)", "self.add(Sphere(radius=2))\n        self.wait(1)");
+      expect(await precheck(await dir(), code)).toMatch(/resolution/);
+    });
+  });
+
   it("does not reject Text, which is how every label is meant to be written", async () => {
     const code = GOOD.replace('Text("x²"', 'Text("sin(x + π/2), Integer values"');
     expect(await precheck(await dir(), code)).toBeNull();

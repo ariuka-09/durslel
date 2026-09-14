@@ -1,5 +1,39 @@
 @import "tailwindcss";
 
+/* GIP is the house typeface, self-hosted the way the monorepo apps serve it. Only the four
+   weights the design uses ship, and woff2 only — every browser that reaches this app reads it. */
+@font-face {
+  font-family: 'GIP';
+  src: url('/fonts/gip/GIP-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GIP';
+  src: url('/fonts/gip/GIP-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GIP';
+  src: url('/fonts/gip/GIP-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GIP';
+  src: url('/fonts/gip/GIP-ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /*
  * Manim's own visual vocabulary: the default canvas ground, the real palette constants, and
  * hairline geometry. Deliberately a single dark look — the tool should read like the thing it
@@ -32,12 +66,13 @@
 
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
+  --font-sans: 'GIP', 'Helvetica Neue', Arial, sans-serif;
 }
 
 body {
   background: var(--ground);
   color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-sans);
 }
 
 /*

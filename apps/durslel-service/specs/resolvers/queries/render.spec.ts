@@ -1,5 +1,6 @@
 import { getRender, getRenderByJobId, getRenders } from '@/resolvers/queries/render';
-import { adminCtx, anonCtx, ctx, info, render, returning } from '../test-helpers';
+import { RenderStatus } from '@/types/generated';
+import { adminCtx, anonCtx, ctx, info, render, returning, written } from '../test-helpers';
 
 jest.mock('@/common/drizzle-provider');
 /** nanoid is ESM-only, and the real drizzle-config reaches it. */
@@ -76,5 +77,64 @@ describe('getRenderByJobId', () => {
     returning([]);
 
     await expect(getRenderByJobId!({}, { jobId: 'nope' }, ctx, info)).resolves.toBeNull();
+  });
+});
+
+/**
+ * A render runs inside a container, detached from the request that started it, and writes its row
+ * only when it ends. Kill the container mid-render and nothing is left to record that: the row
+ * stays PENDING for good, the browser polls it forever, and it eats one of the account's three
+ * renders for the day. These reads are where that gets noticed and undone.
+ */
+describe('abandoned renders', () => {
+  const pending = (ageMs: number) => ({
+    ...render,
+    status: RenderStatus.Pending,
+    url: null,
+    createdAt: new Date(Date.now() - ageMs),
+  });
+
+  it('fails a render still pending long past its own budget', async () => {
+    returning([pending(10 * 60 * 1000)]);
+
+    await expect(getRenders!({}, {}, ctx, info)).resolves.toMatchObject([
+      { status: RenderStatus.Failed, attempts: 0, durationMs: 0 },
+    ]);
+    // attempts: 0 is what hands the render back — startRender's daily count skips rows that
+    // never ran. Without it the account is still charged for a render that never happened.
+    expect(written).toContainEqual(expect.objectContaining({ status: RenderStatus.Failed, attempts: 0 }));
+  });
+
+  it('leaves a render that is merely slow alone', async () => {
+    returning([pending(30 * 1000)]);
+
+    await expect(getRenders!({}, {}, ctx, info)).resolves.toMatchObject([{ status: RenderStatus.Pending }]);
+    expect(written).toEqual([]);
+  });
+
+  /** The sidebar shows a whole history at once, so one dead row must not take the live one with it. */
+  it('touches only the abandoned rows in a mixed history', async () => {
+    returning([pending(10 * 60 * 1000), { ...pending(30 * 1000), id: 'render2' }]);
+
+    await expect(getRenders!({}, {}, ctx, info)).resolves.toMatchObject([
+      { id: 'render1', status: RenderStatus.Failed },
+      { id: 'render2', status: RenderStatus.Pending },
+    ]);
+  });
+
+  it('reconciles the single-render read the browser polls', async () => {
+    returning([pending(10 * 60 * 1000)]);
+
+    await expect(getRender!({}, { id: 'render1' }, ctx, info)).resolves.toMatchObject({
+      status: RenderStatus.Failed,
+    });
+  });
+
+  it('reconciles a lookup by job id', async () => {
+    returning([pending(10 * 60 * 1000)]);
+
+    await expect(getRenderByJobId!({}, { jobId: render.jobId }, ctx, info)).resolves.toMatchObject({
+      status: RenderStatus.Failed,
+    });
   });
 });

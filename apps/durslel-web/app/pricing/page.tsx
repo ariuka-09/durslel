@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { SubscriptionTier, useMeQuery } from "@/generated";
+import { FREE_DAILY_LIMIT } from "@/lib/jobs";
 import { formatPrice, PLANS } from "@/lib/plans";
 
 /**
@@ -54,8 +55,9 @@ export default function Pricing() {
       </div>
 
       <p className="max-w-lg text-sm text-muted">
-        Each plan is 30 days, paid once — nothing renews on its own. Payment goes through Wire:
-        scan the QR with your bank app, or open the app straight from the checkout page.
+        Each plan is 30 days, paid once — nothing renews on its own. A free account gets{" "}
+        {FREE_DAILY_LIMIT} renders a day; the count resets at midnight GMT+8. Payment goes through
+        Wire: scan the QR with your bank app, or open the app straight from the checkout page.
       </p>
 
       {isLoaded && !isSignedIn ? (
@@ -85,6 +87,12 @@ export default function Pricing() {
               <p className="font-display text-2xl">
                 {formatPrice(plan.price)}
                 <span className="text-xs text-muted"> / 30 days</span>
+              </p>
+
+              {/* The whole of what the money buys, so it is not left to the blurb to imply. */}
+              <p className="text-sm">
+                <span className="font-display text-lg">{plan.renders}</span>
+                <span className="text-muted"> renders a day</span>
               </p>
 
               <button

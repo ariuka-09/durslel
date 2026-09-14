@@ -146,7 +146,11 @@ export async function renderScene(
       ok: false,
       error: renderError(
         "timeout",
-        `Killed after ${Math.round(budget / 1000)}s — the scene either loops forever or is far too long.`,
+        // Says what to change, not just that time ran out. The old wording — "loops forever or is
+        // far too long" — sent the repair attempt off shortening the animation, which cannot help
+        // when the cost is per-frame mesh rasterization: three rerolls of a sphere scene each cut
+        // the ring count and each died the same way.
+        `Killed after ${Math.round(budget / 1000)}s. The scene renders too slowly — usually a 3D mesh at too fine a resolution, not a scene that is too long.`,
         lines.slice(-50).join("\n") || "(no output before the kill)",
         attempt,
       ),

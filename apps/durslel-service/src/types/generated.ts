@@ -1,4 +1,5 @@
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
+import { UserRow } from '../drizzle-config';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = T;
 export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
@@ -6,6 +7,7 @@ export type MakeOptional<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]?: 
 export type MakeMaybe<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]: Maybe<T[SubKey]> };
 export type MakeEmpty<T extends { [key: string]: unknown }, K extends keyof T> = { [_ in K]?: never };
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 export type RequireFields<T, K extends keyof T> = Omit<T, K> & { [P in K]-?: NonNullable<T[P]> };
 /** All built-in and custom scalars, mapped to their actual values */
 export type Scalars = {
@@ -229,6 +231,12 @@ export type UpsertUserInput = {
 export type User = {
   __typename?: 'User';
   createdAt: Scalars['Timestamp']['output'];
+  /**
+   * Renders this account may start per day, which is what a subscription buys. Follows the tier
+   * in force, so it drops back to the FREE allowance the moment a paid period ends. Served from
+   * here so the browser and startRender cannot disagree about it.
+   */
+  dailyLimit: Scalars['Int']['output'];
   email?: Maybe<Scalars['String']['output']>;
   firstName?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
@@ -318,7 +326,7 @@ export type ResolversTypes = {
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   Mutation: ResolverTypeWrapper<{}>;
   Query: ResolverTypeWrapper<{}>;
-  Render: ResolverTypeWrapper<Render>;
+  Render: ResolverTypeWrapper<Omit<Render, 'creator'> & { creator?: Maybe<ResolversTypes['User']> }>;
   RenderStatus: RenderStatus;
   Response: Response;
   Role: Role;
@@ -327,7 +335,7 @@ export type ResolversTypes = {
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
   UpdateRenderInput: UpdateRenderInput;
   UpsertUserInput: UpsertUserInput;
-  User: ResolverTypeWrapper<User>;
+  User: ResolverTypeWrapper<UserRow>;
 };
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -339,12 +347,12 @@ export type ResolversParentTypes = {
   Int: Scalars['Int']['output'];
   Mutation: {};
   Query: {};
-  Render: Render;
+  Render: Omit<Render, 'creator'> & { creator?: Maybe<ResolversParentTypes['User']> };
   String: Scalars['String']['output'];
   Timestamp: Scalars['Timestamp']['output'];
   UpdateRenderInput: UpdateRenderInput;
   UpsertUserInput: UpsertUserInput;
-  User: User;
+  User: UserRow;
 };
 
 export type MutationResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
@@ -388,6 +396,7 @@ export interface TimestampScalarConfig extends GraphQLScalarTypeConfig<Resolvers
 
 export type UserResolvers<ContextType = Context, ParentType extends ResolversParentTypes['User'] = ResolversParentTypes['User']> = {
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
+  dailyLimit?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   email?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   firstName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;

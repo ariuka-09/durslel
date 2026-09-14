@@ -1,7 +1,10 @@
+import { SQL } from 'drizzle-orm';
+import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
+
 import { startRendering } from '@/common/renderer';
 import { startRender } from '@/resolvers/mutations/start-render';
-import { RenderStatus } from '@/types/generated';
-import { adminCtx, anonCtx, ctx, info, render, returning, waited, written } from '../test-helpers';
+import { RenderStatus, SubscriptionTier } from '@/types/generated';
+import { adminCtx, anonCtx, ctx, filters, info, render, returning, waited, written } from '../test-helpers';
 
 jest.mock('@/common/drizzle-provider');
 jest.mock('@/common/renderer');
@@ -74,6 +77,51 @@ describe('startRender', () => {
     await expect(startRender!({}, { prompt: 'a prompt' }, ctx, info)).rejects.toThrow('Daily limit reached');
     expect(written).toEqual([]);
     expect(startRendering).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A row that never reached an attempt spent no renderer time, so it rations nothing. Both kinds
+   * exist: a job turned away by a full queue, and one whose container died before it could write
+   * a terminal status. Charging the account for either takes a render away from someone the
+   * system already failed.
+   */
+  it('leaves rows that never ran out of the daily count', async () => {
+    returning([pending]);
+
+    await startRender!({}, { prompt: 'a prompt' }, ctx, info);
+
+    const dialect = new SQLiteSyncDialect();
+    const clauses = filters.map((clause) => dialect.sqlToQuery(clause as SQL).sql);
+
+    expect(clauses.some((sql) => sql.includes('"attempts"'))).toBe(true);
+  });
+
+  /**
+   * What a subscription buys, and the whole reason it is worth buying: the cap follows the tier.
+   * A paid account used to get the same three renders as a free one.
+   */
+  it('gives a subscriber the ceiling their tier paid for', async () => {
+    const subscriber = {
+      ...pending,
+      subscription: SubscriptionTier.Pro,
+      subscriptionUntil: new Date(Date.now() + 86_400_000),
+    };
+    // Three rows: over the FREE limit, nowhere near PRO's.
+    returning([subscriber, subscriber, subscriber]);
+
+    await expect(startRender!({}, { prompt: 'a prompt' }, ctx, info)).resolves.toBeDefined();
+  });
+
+  /** An expired subscription is not a subscription — the row keeps the tier, the account does not. */
+  it('drops a lapsed subscriber back to the free ceiling', async () => {
+    const lapsed = {
+      ...pending,
+      subscription: SubscriptionTier.Studio,
+      subscriptionUntil: new Date(Date.now() - 1),
+    };
+    returning([lapsed, lapsed, lapsed]);
+
+    await expect(startRender!({}, { prompt: 'a prompt' }, ctx, info)).rejects.toThrow('Daily limit reached');
   });
 
   it('allows the third render of the day', async () => {
