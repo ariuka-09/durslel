@@ -1,5 +1,7 @@
 import { Container } from "@cloudflare/containers";
 
+import { isAppPath } from "../lib/app-paths";
+
 /**
  * Bindings and secrets for the web deployable: the container, the video bucket, and what the
  * container needs to do its job. No D1 — the database belongs to durslel-service, which is its own
@@ -148,6 +150,10 @@ export default {
           headers,
         });
       }
+    }
+
+    if (!isAppPath(url.pathname)) {
+      return new Response("Not found", { status: 404 });
     }
 
     // One shared instance. Renders are CPU-bound and a single container serialises them, which
