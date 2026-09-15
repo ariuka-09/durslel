@@ -7,6 +7,8 @@ import { useState } from "react";
 import { SubscriptionTier, useMeQuery } from "@/generated";
 import { FREE_DAILY_LIMIT } from "@/lib/jobs";
 import { formatPrice, PLANS } from "@/lib/plans";
+import { LangToggle, useT } from "@/shared/i18n";
+import { ThemeToggle } from "@/shared/theme";
 
 /**
  * The payment window: three plans, one button each, straight to Wire's hosted checkout.
@@ -17,6 +19,7 @@ import { formatPrice, PLANS } from "@/lib/plans";
  */
 export default function Pricing() {
   const { isLoaded, isSignedIn } = useAuth();
+  const t = useT();
   const { data } = useMeQuery({ skip: !isSignedIn, fetchPolicy: "cache-and-network" });
   const current = data?.me?.subscription ?? SubscriptionTier.Free;
   const until = data?.me?.subscriptionUntil ?? null;
@@ -47,23 +50,23 @@ export default function Pricing() {
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-5 py-10">
-      <div className="flex items-baseline justify-between gap-4">
-        <h1 className="font-display text-3xl tracking-tight">Plans</h1>
-        <Link href="/" className="text-xs uppercase tracking-[0.2em] text-muted hover:text-ink">
-          Back
-        </Link>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-3xl font-extrabold tracking-tight">{t.plans}</h1>
+        <div className="flex items-center gap-4">
+          <LangToggle />
+          <ThemeToggle />
+          <Link href="/" className="text-sm font-medium text-muted hover:text-ink">
+            {t.back}
+          </Link>
+        </div>
       </div>
 
-      <p className="max-w-lg text-sm text-muted">
-        Each plan is 30 days, paid once — nothing renews on its own. A free account gets{" "}
-        {FREE_DAILY_LIMIT} renders a day; the count resets at midnight GMT+8. Payment goes through
-        Wire: scan the QR with your bank app, or open the app straight from the checkout page.
-      </p>
+      <p className="max-w-lg text-sm text-muted">{t.plansIntro(FREE_DAILY_LIMIT)}</p>
 
       {isLoaded && !isSignedIn ? (
         <SignInButton mode="modal">
-          <button className="self-start border border-yellow-e px-6 py-2.5 text-sm uppercase tracking-widest text-yellow-e">
-            Sign in to subscribe
+          <button className="self-start rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-on-accent shadow-soft hover:bg-accent-strong">
+            {t.signInToSubscribe}
           </button>
         </SignInButton>
       ) : null}
@@ -75,39 +78,41 @@ export default function Pricing() {
           return (
             <section
               key={plan.tier}
-              className={`flex flex-col gap-4 border p-5 ${
-                active ? "border-green-c" : "border-rule"
+              className={`flex flex-col gap-4 rounded-card bg-panel p-6 shadow-soft ${
+                active ? "ring-2 ring-accent" : ""
               }`}
             >
               <div className="flex flex-col gap-1">
-                <h2 className="font-display text-xl tracking-tight">{plan.name}</h2>
-                <p className="text-sm text-muted">{plan.blurb}</p>
+                <h2 className="text-xl font-bold tracking-tight">{plan.name}</h2>
+                <p className="text-sm text-muted">{t.blurb[plan.tier] ?? plan.blurb}</p>
               </div>
 
-              <p className="font-display text-2xl">
+              <p className="text-2xl font-bold">
                 {formatPrice(plan.price)}
-                <span className="text-xs text-muted"> / 30 days</span>
+                <span className="text-xs text-muted">{t.per30Days}</span>
               </p>
 
               {/* The whole of what the money buys, so it is not left to the blurb to imply. */}
               <p className="text-sm">
-                <span className="font-display text-lg">{plan.renders}</span>
-                <span className="text-muted"> renders a day</span>
+                <span className="text-lg font-bold">{plan.renders}</span>
+                <span className="text-muted">{t.rendersADay}</span>
               </p>
 
               <button
                 type="button"
                 disabled={!isSignedIn || pending !== null}
                 onClick={() => buy(plan.tier)}
-                className={`mt-auto border px-4 py-2 text-xs uppercase tracking-[0.15em] disabled:opacity-40 ${
-                  active ? "border-green-c text-green-c" : "border-blue-d text-blue-d"
+                className={`mt-auto rounded-full px-4 py-2 text-sm font-medium disabled:opacity-40 ${
+                  active
+                    ? "bg-tint text-accent-ink hover:bg-rule"
+                    : "bg-accent text-on-accent hover:bg-accent-strong"
                 }`}
               >
                 {pending === plan.tier
-                  ? "Redirecting…"
+                  ? t.redirecting
                   : active
-                    ? "Extend 30 days"
-                    : `Pay ${formatPrice(plan.price)}`}
+                    ? t.extend
+                    : t.pay(formatPrice(plan.price))}
               </button>
             </section>
           );
@@ -116,12 +121,12 @@ export default function Pricing() {
 
       {/* The one thing a subscriber needs from this page once they have paid. */}
       {until && current !== SubscriptionTier.Free ? (
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">
-          {current} until {new Date(until).toLocaleDateString()}
+        <p className="text-sm text-muted">
+          {t.tierUntil(current, new Date(until).toLocaleDateString())}
         </p>
       ) : null}
 
-      {error ? <p className="text-xs text-red-c">{error}</p> : null}
+      {error ? <p className="text-sm text-bad">{error}</p> : null}
     </main>
   );
 }

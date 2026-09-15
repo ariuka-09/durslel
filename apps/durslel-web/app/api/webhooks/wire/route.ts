@@ -24,16 +24,23 @@ const ACTIVATE_SUBSCRIPTION = `
  * where it can drop the request before it costs anything. The signature is the real check.
  */
 export async function POST(request: Request) {
+  // Raw bytes, before anything parses them — the signature covers the exact body that arrived.
+  const raw = await request.text();
+
   const secret = process.env.WIRE_WEBHOOK_SECRET;
   if (!secret) {
+    // Registration pings the URL and wants a 2xx before it hands back the whsec_ — so the secret
+    // cannot exist yet when the ping arrives. Answer that one type unverified: acknowledging a
+    // ping grants nothing, and anyone able to trigger one already holds the API key.
+    if (parseType(raw) === "endpoint.verification") {
+      console.log("wire endpoint.verification answered before WIRE_WEBHOOK_SECRET was set");
+      return new Response(null, { status: 200 });
+    }
     // 500, not 400: the delivery is fine, this end is not. Wire retries, which is what should
     // happen while a secret is missing.
     console.error("wire webhook received but WIRE_WEBHOOK_SECRET is not set");
     return new Response("webhook secret not configured", { status: 500 });
   }
-
-  // Raw bytes, before anything parses them — the signature covers the exact body that arrived.
-  const raw = await request.text();
 
   let event;
   try {
@@ -98,4 +105,12 @@ export async function POST(request: Request) {
 
   // Answer immediately. Anything slow belongs after the response, not before it.
   return new Response(null, { status: 200 });
+}
+
+function parseType(raw: string): unknown {
+  try {
+    return (JSON.parse(raw) as { type?: unknown }).type;
+  } catch {
+    return undefined;
+  }
 }

@@ -21,12 +21,12 @@ export const STATUS_TEXT: Record<RenderStatus, string> = {
 };
 
 export const STATUS_COLOR: Record<RenderStatus, string> = {
-  // Deliberately not the yellow of "rendering": queued means nothing is happening yet, and the
+  // Deliberately not the amber of "rendering": queued means nothing is happening yet, and the
   // two states are a second apart on screen when a burst arrives.
-  [RenderStatus.Queued]: "text-blue-d",
-  [RenderStatus.Pending]: "text-yellow-e",
-  [RenderStatus.Ok]: "text-green-c",
-  [RenderStatus.Failed]: "text-red-c",
+  [RenderStatus.Queued]: "text-queued",
+  [RenderStatus.Pending]: "text-warn",
+  [RenderStatus.Ok]: "text-ok",
+  [RenderStatus.Failed]: "text-bad",
 };
 
 /**

@@ -7,6 +7,7 @@ describe('isAppPath', () => {
     '/',
     '/admin',
     '/pricing',
+    '/privacy',
     '/api/render',
     '/api/pay/confirm',
     '/api/webhooks/wire',

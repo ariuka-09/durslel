@@ -5,9 +5,9 @@ import { summarize } from "@/lib/errors";
 import { classify, MODEL, THINKING_LEVEL } from "@/lib/generate";
 
 /**
- * Turn a photographed or scanned problem into a prompt the renderer can animate.
+ * Turn a problem — typed, photographed or scanned — into a prompt the renderer can animate.
  *
- *   POST /api/solve   multipart/form-data, one `file` field
+ *   POST /api/solve   multipart/form-data, one `text` or `file` field
  *   => 200 { "prompt": "Walk through ∫x·eˣ dx by parts: …" }
  *
  * This does not render anything. It reads the problem, solves it, and hands back the brief; the
@@ -39,6 +39,9 @@ const ACCEPTED = new Set([
  */
 const MAX_BYTES = 10 * 1024 * 1024;
 
+/** A typed problem is a question, not an essay; the cap only keeps a pasted book off the bill. */
+const MAX_TEXT = 4000;
+
 /**
  * Reading a page and solving what is on it is slower than writing a scene, and unlike a scene
  * there is no second attempt behind it — a timeout here is the whole feature failing, so the
@@ -50,7 +53,7 @@ const TIMEOUT_MS = 120_000;
 const NOTHING = "NO_PROBLEM";
 
 const INSTRUCTION = [
-  "The attached file holds a problem — most likely maths or physics.",
+  "The attached file or text holds a problem — most likely maths or physics.",
   "",
   "Read it, solve it, and reply with a brief for an animator: one paragraph of plain prose",
   "describing an animation that walks a student through the solution. Name the quantities, give",
@@ -60,7 +63,7 @@ const INSTRUCTION = [
   "- Write maths as Unicode (∫x·eˣ dx, x², √2, θ, ≤). Never LaTeX, never a fenced code block.",
   "- Under 150 words. No headings, no lists, no preamble — your reply is used verbatim as the",
   "  prompt, so anything that is not the brief ends up in the animation.",
-  "- If the file holds several problems, take the first one.",
+  "- If it holds several problems, take the first one.",
   `- If you cannot read a problem in it, reply with exactly: ${NOTHING}`,
 ].join("\n");
 
@@ -75,21 +78,36 @@ export async function POST(request: Request) {
 
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
-  if (!(file instanceof File)) {
-    return Response.json({ error: "attach one file as `file`" }, { status: 400 });
-  }
-  // Checked before the bytes are read, so an oversized upload is refused rather than buffered.
-  if (file.size > MAX_BYTES) {
-    return Response.json({ error: "The file must be under 10 MB." }, { status: 413 });
-  }
-  if (!ACCEPTED.has(file.type)) {
+  const text = form?.get("text");
+
+  let problem;
+  if (typeof text === "string" && text.trim()) {
+    if (text.length > MAX_TEXT) {
+      return Response.json(
+        { error: `The problem must be under ${MAX_TEXT} characters.` },
+        { status: 413 },
+      );
+    }
+    problem = { text: text.trim() };
+  } else if (file instanceof File) {
+    // Checked before the bytes are read, so an oversized upload is refused rather than buffered.
+    if (file.size > MAX_BYTES) {
+      return Response.json({ error: "The file must be under 10 MB." }, { status: 413 });
+    }
+    if (!ACCEPTED.has(file.type)) {
+      return Response.json(
+        { error: `${file.type || "That file"} is not a PDF or an image.` },
+        { status: 415 },
+      );
+    }
+    const data = Buffer.from(await file.arrayBuffer()).toString("base64");
+    problem = { inlineData: { mimeType: file.type, data } };
+  } else {
     return Response.json(
-      { error: `${file.type || "That file"} is not a PDF or an image.` },
-      { status: 415 },
+      { error: "send the problem as `text`, or attach one file as `file`" },
+      { status: 400 },
     );
   }
-
-  const data = Buffer.from(await file.arrayBuffer()).toString("base64");
 
   let response;
   try {
@@ -99,7 +117,7 @@ export async function POST(request: Request) {
         {
           role: "user",
           parts: [
-            { inlineData: { mimeType: file.type, data } },
+            problem,
             { text: INSTRUCTION },
           ],
         },
@@ -125,7 +143,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           error:
-            "Gemini took too long to read the problem. Try again, or crop the page down to the one question.",
+            "Gemini took too long to solve the problem. Try again, or cut it down to the one question.",
         },
         { status: 504 },
       );
@@ -136,7 +154,12 @@ export async function POST(request: Request) {
   const brief = response.text?.trim();
   if (!brief || brief === NOTHING) {
     return Response.json(
-      { error: "No problem could be read out of that file. Try a clearer photo." },
+      {
+        error:
+          "inlineData" in problem
+            ? "No problem could be read out of that file. Try a clearer photo."
+            : "No problem could be found in that text.",
+      },
       { status: 422 },
     );
   }

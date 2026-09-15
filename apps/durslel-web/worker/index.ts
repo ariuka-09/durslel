@@ -1,6 +1,7 @@
 import { Container } from "@cloudflare/containers";
 
 import { isAppPath } from "../lib/app-paths";
+import { serveVideo } from "./video";
 
 /**
  * Bindings and secrets for the web deployable: the container, the video bucket, and what the
@@ -87,70 +88,14 @@ export class ManimContainer extends Container<Env> {
   }
 }
 
-/** Job ids are generated in app/api/render/route.ts and only ever contain these characters. */
-const VIDEO_PATH = /^\/api\/video\/([A-Za-z0-9-]+)$/;
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // Serve finished videos from R2 without involving the container at all. This is the whole
-    // point of persisting them: coming back tomorrow to rewatch a render should not boot a
-    // manim image. Falls through to the container on a miss so a job whose upload failed can
-    // still be served off the container's disk while it is awake.
-    const match = url.pathname.match(VIDEO_PATH);
-    if (match && (request.method === "GET" || request.method === "HEAD")) {
-      const object = await env.VIDEOS.get(`jobs/${match[1]}/out.mp4`, {
-        range: request.headers,
-        onlyIf: request.headers,
-      });
-
-      if (object) {
-        const headers = new Headers();
-        object.writeHttpMetadata(headers);
-        headers.set("etag", object.httpEtag);
-        // A render never changes once written.
-        headers.set("Cache-Control", "public, max-age=31536000, immutable");
-        headers.set("Accept-Ranges", "bytes");
-
-        // ?download=1 turns the same URL into a file download with a sensible name, so the
-        // link can be shared for viewing and used for saving without a second endpoint.
-        if (url.searchParams.has("download")) {
-          headers.set(
-            "Content-Disposition",
-            `attachment; filename="${match[1]}.mp4"`,
-          );
-        }
-
-        const body = "body" in object ? object.body : null;
-        const range = object.range as
-          | { offset?: number; length?: number }
-          | undefined;
-        // A 206 MUST carry Content-Range. Without it the browser aborts the response
-        // (net::ERR_ABORTED) and <video> reports "no supported sources" — invisible to curl,
-        // which never sends a Range header.
-        const partial = Boolean(body && request.headers.has("range") && range);
-
-        if (partial && range) {
-          const offset = range.offset ?? 0;
-          const length = range.length ?? object.size - offset;
-          headers.set(
-            "Content-Range",
-            `bytes ${offset}-${offset + length - 1}/${object.size}`,
-          );
-          headers.set("Content-Length", String(length));
-        } else if (body) {
-          headers.set("Content-Length", String(object.size));
-        }
-
-        // No body means the precondition matched: 304.
-        const status = body ? (partial ? 206 : 200) : 304;
-        return new Response(request.method === "HEAD" ? null : body, {
-          status,
-          headers,
-        });
-      }
-    }
+    // A miss falls through to the container, so a job whose upload failed can still be served
+    // off the container's disk while it is awake.
+    const video = await serveVideo(env.VIDEOS, request);
+    if (video) return video;
 
     if (!isAppPath(url.pathname)) {
       return new Response("Not found", { status: 404 });

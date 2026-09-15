@@ -69,26 +69,26 @@ export default function Admin() {
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-baseline justify-between gap-4 border-b border-rule px-5 py-3">
-          <div className="flex items-baseline gap-3">
+        <header className="flex items-center justify-between gap-4 border-b border-rule px-5 py-3">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setRosterOpen((v) => !v)}
-              className="border border-rule px-2 py-1 text-[10px] uppercase tracking-[0.15em] text-muted md:hidden"
+              className="rounded-full border border-rule bg-panel px-3 py-1 text-xs font-medium text-muted md:hidden"
             >
               {rosterOpen ? "Close" : "Roster"}
             </button>
-            <h1 className="font-display text-2xl tracking-tight">
-              Dur<span className="text-blue-d">slel</span>
+            <h1 className="text-2xl font-extrabold tracking-tight">
+              Dur<span className="text-accent">slel</span>
             </h1>
-            <span className="text-[10px] uppercase tracking-[0.25em] text-yellow-e">
-              admin
+            <span className="rounded-full bg-tint px-2.5 py-0.5 text-xs font-medium text-accent-ink">
+              Admin
             </span>
           </div>
           <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="text-xs uppercase tracking-[0.2em] text-muted hover:text-ink"
+              className="text-sm font-medium text-muted hover:text-ink"
             >
               Render
             </Link>
@@ -97,25 +97,25 @@ export default function Admin() {
         </header>
 
         {current ? (
-          <section className="flex min-w-0 flex-1 flex-col gap-5 bg-ground p-5">
+          <section className="flex min-w-0 flex-1 flex-col gap-5 p-5">
             {/* The page's one large piece of type: whose work you are looking at. */}
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule pb-4">
-              <h2 className="font-display text-3xl tracking-tight">{nameOf(current)}</h2>
+              <h2 className="text-3xl font-bold tracking-tight">{nameOf(current)}</h2>
               {current.email ? (
                 <p className="text-xs text-muted">{current.email}</p>
               ) : null}
               {current.role === Role.Admin ? (
-                <span className="border border-yellow-e px-1.5 py-0.5 text-[10px] uppercase tracking-[0.15em] text-yellow-e">
-                  admin
+                <span className="rounded-full bg-tint px-2.5 py-0.5 text-xs font-medium text-accent-ink">
+                  Admin
                 </span>
               ) : null}
-              <p className="ml-auto text-[10px] uppercase tracking-[0.2em] text-muted">
+              <p className="ml-auto text-xs font-medium text-muted">
                 {loading ? "loading" : `${renders.length} render${renders.length === 1 ? "" : "s"}`}
               </p>
             </div>
 
             {renders.length === 0 ? (
-              <p className={`text-xs ${error ? "text-red-c" : "text-muted"}`}>
+              <p className={`text-xs ${error ? "text-bad" : "text-muted"}`}>
                 {error
                   ? `These renders didn't load: ${error.message}`
                   : loading
@@ -133,9 +133,9 @@ export default function Admin() {
             )}
           </section>
         ) : (
-          <section className="flex flex-1 items-center justify-center bg-ground p-5">
+          <section className="flex flex-1 items-center justify-center p-5">
             {/* An empty roster and a refused one look identical from here, so say which. */}
-            <p className={`max-w-sm text-center text-xs ${rosterError ? "text-red-c" : "text-muted"}`}>
+            <p className={`max-w-sm text-center text-xs ${rosterError ? "text-bad" : "text-muted"}`}>
               {rosterError
                 ? `The roster didn't load: ${rosterError.message}`
                 : "Nobody has signed in yet."}
@@ -158,7 +158,7 @@ function Card({ render, index }: { render: Render; index: number }) {
   const { url, status, prompt, sceneClass, durationMs, attempts, error, createdAt } = render;
 
   return (
-    <article className="flex flex-col border border-rule bg-panel">
+    <article className="flex flex-col overflow-hidden rounded-card bg-panel shadow-soft">
       {url && status === RenderStatus.Ok ? (
         <video
           src={url}
@@ -170,8 +170,8 @@ function Card({ render, index }: { render: Render; index: number }) {
           className="aspect-video w-full bg-black"
         />
       ) : (
-        <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-black px-6 text-center">
-          <p className={`text-[10px] uppercase tracking-[0.2em] ${STATUS_COLOR[status]}`}>
+        <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-tint px-6 text-center">
+          <p className={`text-xs font-medium ${STATUS_COLOR[status]}`}>
             {STATUS_TEXT[status]}
           </p>
           {status === RenderStatus.Failed ? (
@@ -182,17 +182,17 @@ function Card({ render, index }: { render: Render; index: number }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2 border-t border-rule px-4 py-3">
+      <div className="flex flex-col gap-2 px-4 py-3">
         {/* manim's Write, borrowed: the line strokes itself on left to right, staggered down the
             grid. Disabled under prefers-reduced-motion by the rule in globals.css. */}
         <p
-          className="stroke-on flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.18em] text-muted"
+          className="stroke-on flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-muted"
           style={{ animationDelay: `${Math.min(index, 11) * 45}ms` }}
         >
           <time>{formatDate(createdAt)}</time>
-          {sceneClass ? <span className="text-blue-d">{sceneClass}</span> : null}
+          {sceneClass ? <span className="text-accent-ink">{sceneClass}</span> : null}
           {durationMs ? <span>{(durationMs / 1000).toFixed(1)}s</span> : null}
-          {attempts > 1 ? <span className="text-yellow-e">{attempts} tries</span> : null}
+          {attempts > 1 ? <span className="text-warn">{attempts} tries</span> : null}
           {status === RenderStatus.Ok ? null : (
             <span className={STATUS_COLOR[status]}>{STATUS_TEXT[status]}</span>
           )}
@@ -223,35 +223,35 @@ function Roster({
     <aside
       className={`${
         shown ? "flex" : "hidden"
-      } w-64 shrink-0 flex-col border-r border-rule bg-panel md:flex`}
+      } sticky top-0 h-dvh w-64 shrink-0 flex-col border-r border-rule bg-panel md:flex`}
     >
-      <p className="border-b border-rule px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-muted">
-        roster
-      </p>
-      <div className="flex-1 overflow-auto">
+      {/* Pinned to the viewport height, so a long roster scrolls inside the sidebar instead of
+          stretching the whole page. */}
+      <p className="px-5 pb-2 pt-4 text-xs font-medium text-muted">Roster</p>
+      <div className="flex flex-1 flex-col gap-0.5 overflow-auto px-2 pb-2">
         {people.length === 0 ? (
-          <p className="px-4 py-3 text-[11px] text-rule">nobody yet</p>
+          <p className="px-3 py-2 text-xs text-muted">Nobody yet</p>
         ) : (
           people.map((person) => (
             <button
               key={person.id}
               type="button"
               onClick={() => pick(person.id)}
-              className={`block w-full border-b border-rule/50 px-4 py-2.5 text-left hover:bg-ground ${
-                person.id === current ? "bg-ground" : ""
+              className={`block w-full rounded-full px-3 py-2 text-left ${
+                person.id === current ? "bg-tint" : "hover:bg-ground"
               }`}
             >
               <span
                 className={`block truncate text-xs ${
-                  person.id === current ? "text-blue-d" : "text-ink"
+                  person.id === current ? "font-medium text-accent-ink" : "text-ink"
                 }`}
               >
                 {nameOf(person)}
               </span>
-              <span className="flex items-center gap-2 text-[10px] text-muted">
+              <span className="flex items-center gap-2 text-[11px] text-muted">
                 <span className="min-w-0 truncate">{person.email ?? "no email"}</span>
                 {person.role === Role.Admin ? (
-                  <span className="shrink-0 text-yellow-e">admin</span>
+                  <span className="shrink-0 text-accent-ink">admin</span>
                 ) : null}
               </span>
             </button>
@@ -266,18 +266,18 @@ function Roster({
 function Gate({ title, body, signIn }: { title: string; body: string; signIn?: boolean }) {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
-      <h1 className="font-display text-4xl tracking-tight">{title}</h1>
+      <h1 className="text-4xl font-extrabold tracking-tight">{title}</h1>
       <p className="max-w-sm text-sm text-muted">{body}</p>
       {signIn ? (
         <SignInButton mode="modal">
-          <button className="border border-yellow-e px-6 py-2.5 text-sm uppercase tracking-widest text-yellow-e">
+          <button className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-on-accent shadow-soft hover:bg-accent-strong">
             Sign in with Google
           </button>
         </SignInButton>
       ) : (
         <Link
           href="/"
-          className="border border-rule px-6 py-2.5 text-sm uppercase tracking-widest text-ink hover:border-blue-d hover:text-blue-d"
+          className="rounded-full border border-rule bg-panel px-6 py-2.5 text-sm font-medium text-ink hover:text-accent-ink"
         >
           Back to rendering
         </Link>

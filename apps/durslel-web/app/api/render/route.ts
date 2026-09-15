@@ -1,7 +1,7 @@
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { generateScene, type Attempt } from "@/lib/generate";
+import { generateScene, type Attempt, type Lang } from "@/lib/generate";
 import { summarize, type RenderError } from "@/lib/errors";
 import { graphqlAsService } from "@/lib/graphql";
 import { precheck } from "@/lib/precheck";
@@ -63,10 +63,11 @@ export async function POST(request: Request) {
     return new Response("unauthorized", { status: 401 });
   }
 
-  const { jobId, prompt, userId } = (await request.json()) as {
+  const { jobId, prompt, userId, lang } = (await request.json()) as {
     jobId?: string;
     prompt?: string;
     userId?: string;
+    lang?: string;
   };
   if (!jobId || !prompt || !userId) {
     return new Response("jobId, prompt and userId are required", { status: 400 });
@@ -82,7 +83,8 @@ export async function POST(request: Request) {
   // The catch marks the row rather than swallowing: anything thrown out here — a full disk, a
   // bug in the loop — used to leave the row PENDING forever with the browser polling it every
   // 1.5 seconds and nothing on its way to ever answer.
-  void run(jobId, prompt, userId).catch(async (e: unknown) => {
+  // Anything but "mn" is English, including a service too old to send it.
+  void run(jobId, prompt, userId, lang === "mn" ? "mn" : "en").catch(async (e: unknown) => {
     console.error(`render crashed for ${jobId}:`, e);
     await complete(jobId, userId, {
       status: "FAILED",
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
   return new Response(null, { status: 202 });
 }
 
-async function run(jobId: string, prompt: string, userId: string): Promise<void> {
+async function run(jobId: string, prompt: string, userId: string, lang: Lang): Promise<void> {
   // Wait for a slot before doing anything else. Four renders at once each get a core to
   // themselves; a fifth admitted alongside them would only slow the four already going, so it
   // waits here. The row stays PENDING meanwhile, which is what the browser is already polling.
@@ -129,7 +131,7 @@ async function run(jobId: string, prompt: string, userId: string): Promise<void>
   }
 
   try {
-    await render(jobId, prompt, userId);
+    await render(jobId, prompt, userId, lang);
   } finally {
     release();
   }
@@ -142,7 +144,7 @@ async function run(jobId: string, prompt: string, userId: string): Promise<void>
  * before it. Started at `run` entry, a job that queued for two minutes would reach its first
  * attempt with most of its four already spent, and fail for lack of time it never had.
  */
-async function render(jobId: string, prompt: string, userId: string): Promise<void> {
+async function render(jobId: string, prompt: string, userId: string, lang: Lang): Promise<void> {
   const startedAt = Date.now();
   const jobDir = path.join(RENDERS_DIR, jobId);
   await mkdir(jobDir, { recursive: true });
@@ -159,7 +161,7 @@ async function render(jobId: string, prompt: string, userId: string): Promise<vo
 
     // The clock this attempt actually has. Passed down so a hung Gemini call is cut off by the
     // same budget the loop measures, rather than outliving the render that is waiting on it.
-    const generated = await generateScene(prompt, attempt, previous, BUDGET_MS - (Date.now() - startedAt));
+    const generated = await generateScene(prompt, attempt, previous, BUDGET_MS - (Date.now() - startedAt), lang);
     if ("error" in generated) {
       await keepEvidence(jobId, jobDir, attempt, generated.error);
       lastError = summarize(generated.error);

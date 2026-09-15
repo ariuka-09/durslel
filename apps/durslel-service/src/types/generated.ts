@@ -65,6 +65,9 @@ export type Mutation = {
    * Requests a render and returns immediately with a PENDING row. manim takes up to three
    * minutes, far longer than a request should be held open, so the client polls getRender until
    * status leaves PENDING rather than waiting on this call.
+   *
+   * lang is the language of the video's on-screen text: "mn" for Mongolian, anything else (or
+   * nothing) for English.
    */
   startRender: Render;
   updateRender: Render;
@@ -94,6 +97,7 @@ export type MutationDeleteRenderArgs = {
 
 
 export type MutationStartRenderArgs = {
+  lang?: InputMaybe<Scalars['String']['input']>;
   prompt: Scalars['String']['input'];
 };
 

@@ -46,7 +46,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export const startRender: MutationResolvers['startRender'] = async (
   _,
-  { prompt },
+  { prompt, lang },
   { env, userId, role, waitUntil },
 ) => {
   const db = drizzleProvider(env);
@@ -106,7 +106,7 @@ export const startRender: MutationResolvers['startRender'] = async (
   // Handed off rather than awaited. A renderer that cannot be reached marks the row FAILED here,
   // because otherwise the client would poll forever on a job nobody is doing.
   waitUntil(
-    startRendering(env, { jobId, prompt, userId: creatorId }).catch((error: unknown) =>
+    startRendering(env, { jobId, prompt, userId: creatorId, lang: lang === 'mn' ? 'mn' : 'en' }).catch((error: unknown) =>
       db
         .update(renderTable)
         .set({

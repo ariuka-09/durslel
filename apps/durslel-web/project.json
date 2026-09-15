@@ -41,14 +41,28 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "apps/durslel-web",
-        "command": "npx wrangler deploy --env production"
+        "command": "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsuZHVyc2xlbC5jb20k npx next build && npx opennextjs-cloudflare build --skipNextBuild && printf 'export const production = {};\\nexport const development = {};\\nexport const test = {};\\n' > .open-next/cloudflare/next-env.mjs && npx opennextjs-cloudflare deploy -- --env production"
       }
     },
     "deploy-test": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "apps/durslel-web",
-        "command": "npx wrangler deploy --env test"
+        "command": "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_YXJ0aXN0aWMtZmFsY29uLTcwNTcuY2xlcmsuYWNjb3VudHMuZGV2JA NEXT_PUBLIC_SERVICE_URL=https://dursel-service-test.ariuntuguldur3.workers.dev/graphql npx next build && npx opennextjs-cloudflare build --skipNextBuild && printf 'export const production = {};\\nexport const development = {};\\nexport const test = {};\\n' > .open-next/cloudflare/next-env.mjs && npx opennextjs-cloudflare deploy -- --env test"
+      }
+    },
+    "deploy-renderer": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/durslel-web",
+        "command": "npx wrangler deploy -c wrangler.renderer.jsonc --env production"
+      }
+    },
+    "deploy-renderer-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/durslel-web",
+        "command": "npx wrangler deploy -c wrangler.renderer.jsonc --env test"
       }
     }
   }

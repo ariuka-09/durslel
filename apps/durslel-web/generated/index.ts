@@ -64,6 +64,9 @@ export type Mutation = {
    * Requests a render and returns immediately with a PENDING row. manim takes up to three
    * minutes, far longer than a request should be held open, so the client polls getRender until
    * status leaves PENDING rather than waiting on this call.
+   *
+   * lang is the language of the video's on-screen text: "mn" for Mongolian, anything else (or
+   * nothing) for English.
    */
   startRender: Render;
   updateRender: Render;
@@ -93,6 +96,7 @@ export type MutationDeleteRenderArgs = {
 
 
 export type MutationStartRenderArgs = {
+  lang?: InputMaybe<Scalars['String']['input']>;
   prompt: Scalars['String']['input'];
 };
 
@@ -267,6 +271,7 @@ export type GetRenderQuery = { __typename?: 'Query', getRender?: { __typename?: 
 
 export type StartRenderMutationVariables = Exact<{
   prompt: Scalars['String']['input'];
+  lang?: InputMaybe<Scalars['String']['input']>;
 }>;
 
 
@@ -394,8 +399,8 @@ export type GetRenderLazyQueryHookResult = ReturnType<typeof useGetRenderLazyQue
 export type GetRenderSuspenseQueryHookResult = ReturnType<typeof useGetRenderSuspenseQuery>;
 export type GetRenderQueryResult = Apollo.QueryResult<GetRenderQuery, GetRenderQueryVariables>;
 export const StartRenderDocument = gql`
-    mutation StartRender($prompt: String!) {
-  startRender(prompt: $prompt) {
+    mutation StartRender($prompt: String!, $lang: String) {
+  startRender(prompt: $prompt, lang: $lang) {
     id
     jobId
     title
@@ -421,6 +426,7 @@ export type StartRenderMutationFn = Apollo.MutationFunction<StartRenderMutation,
  * const [startRenderMutation, { data, loading, error }] = useStartRenderMutation({
  *   variables: {
  *      prompt: // value for 'prompt'
+ *      lang: // value for 'lang'
  *   },
  * });
  */

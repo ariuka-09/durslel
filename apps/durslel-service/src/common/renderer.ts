@@ -17,7 +17,7 @@ const RENDERER_PATH = 'https://renderer.internal/api/render';
  */
 export const startRendering = async (
   env: Env,
-  job: { jobId: string; prompt: string; userId: string },
+  job: { jobId: string; prompt: string; userId: string; lang?: 'en' | 'mn' },
 ): Promise<void> => {
   const res = await env.RENDERER.fetch(RENDERER_PATH, {
     method: 'POST',

@@ -30,8 +30,8 @@ query GetRender($id: ID!) {
   }
 }
 
-mutation StartRender($prompt: String!) {
-  startRender(prompt: $prompt) {
+mutation StartRender($prompt: String!, $lang: String) {
+  startRender(prompt: $prompt, lang: $lang) {
     id
     jobId
     title

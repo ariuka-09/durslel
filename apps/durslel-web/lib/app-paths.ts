@@ -14,6 +14,7 @@ const APP_SEGMENTS = new Set([
   "",
   "admin",
   "pricing",
+  "privacy",
   "api",
   "_next",
   "fonts",
