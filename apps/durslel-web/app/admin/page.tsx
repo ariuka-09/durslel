@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import {
   RenderStatus,
+  useAllRendersQuery,
   useGetRendersQuery,
   useUsersQuery,
   type GetRendersQuery,
@@ -13,7 +14,9 @@ import {
   Role,
 } from "@/generated";
 import { useIsAdmin } from "@/lib/admin";
-import { STATUS_COLOR, STATUS_TEXT, formatDate } from "@/lib/jobs";
+import { STATUS_COLOR, STATUS_TEXT, formatDate, monthKey, monthLabel } from "@/lib/jobs";
+
+import { Chart } from "./chart";
 
 type Person = UsersQuery["users"][number];
 type Render = GetRendersQuery["getRenders"][number];
@@ -32,6 +35,11 @@ export default function Admin() {
 
   const { data: roster, error: rosterError } = useUsersQuery({ skip: !isAdmin });
   const people = roster?.users ?? [];
+
+  // Every render by everyone, for the chart's second series. Separate from the per-person query
+  // below because they answer different questions: this one is the whole service over time, that
+  // one is one person's work.
+  const { data: all } = useAllRendersQuery({ skip: !isAdmin });
   // Land on someone rather than on an instruction: the first row is the newest signup, and one
   // person's work is the thing this page is for.
   const current = people.find((p) => p.id === picked) ?? people[0] ?? null;
@@ -95,6 +103,15 @@ export default function Admin() {
             <UserButton />
           </div>
         </header>
+
+        {/* The service as a whole, above whoever is selected: the dashboard opens on how much is
+            happening, and a person's cards answer the next question rather than the first. */}
+        <section className="min-w-0 px-5 pt-5">
+          <Chart
+            signups={people.map((person) => person.createdAt)}
+            renders={(all?.allRenders ?? []).map((render) => render.createdAt)}
+          />
+        </section>
 
         {current ? (
           <section className="flex min-w-0 flex-1 flex-col gap-5 p-5">
@@ -207,7 +224,7 @@ function Card({ render, index }: { render: Render; index: number }) {
   );
 }
 
-/** Everyone who has signed in, newest first. */
+/** Everyone who has signed in, newest first, under the month they arrived in. */
 function Roster({
   people,
   current,
@@ -219,6 +236,18 @@ function Roster({
   pick: (id: string) => void;
   shown: boolean;
 }) {
+  // The query already returns newest first, so walking it in order puts the months in order and
+  // nothing needs sorting — a run of rows with the same month key is that month's group.
+  const months = people.reduce<{ key: string; members: Person[] }[]>((groups, person) => {
+    const key = monthKey(person.createdAt);
+    const open = groups[groups.length - 1];
+
+    if (open?.key === key) open.members.push(person);
+    else groups.push({ key, members: [person] });
+
+    return groups;
+  }, []);
+
   return (
     <aside
       className={`${
@@ -232,29 +261,39 @@ function Roster({
         {people.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted">Nobody yet</p>
         ) : (
-          people.map((person) => (
-            <button
-              key={person.id}
-              type="button"
-              onClick={() => pick(person.id)}
-              className={`block w-full rounded-full px-3 py-2 text-left ${
-                person.id === current ? "bg-tint" : "hover:bg-ground"
-              }`}
-            >
-              <span
-                className={`block truncate text-xs ${
-                  person.id === current ? "font-medium text-accent-ink" : "text-ink"
-                }`}
-              >
-                {nameOf(person)}
-              </span>
-              <span className="flex items-center gap-2 text-[11px] text-muted">
-                <span className="min-w-0 truncate">{person.email ?? "no email"}</span>
-                {person.role === Role.Admin ? (
-                  <span className="shrink-0 text-accent-ink">admin</span>
-                ) : null}
-              </span>
-            </button>
+          months.map(({ key, members }) => (
+            <section key={key} className="flex flex-col gap-0.5">
+              {/* Stuck to the top of the scroller, so scrolling into 2025 never leaves you
+                  looking at names with no idea when they arrived. */}
+              <h3 className="sticky top-0 z-10 bg-panel px-3 pb-1 pt-3 text-[11px] font-medium text-muted">
+                {monthLabel(key)}
+                <span className="pl-1.5 text-accent-ink">{members.length}</span>
+              </h3>
+              {members.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  onClick={() => pick(person.id)}
+                  className={`block w-full rounded-full px-3 py-2 text-left ${
+                    person.id === current ? "bg-tint" : "hover:bg-ground"
+                  }`}
+                >
+                  <span
+                    className={`block truncate text-xs ${
+                      person.id === current ? "font-medium text-accent-ink" : "text-ink"
+                    }`}
+                  >
+                    {nameOf(person)}
+                  </span>
+                  <span className="flex items-center gap-2 text-[11px] text-muted">
+                    <span className="min-w-0 truncate">{person.email ?? "no email"}</span>
+                    {person.role === Role.Admin ? (
+                      <span className="shrink-0 text-accent-ink">admin</span>
+                    ) : null}
+                  </span>
+                </button>
+              ))}
+            </section>
           ))
         )}
       </div>

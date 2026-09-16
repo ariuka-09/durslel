@@ -63,6 +63,63 @@ export function formatDate(
 }
 
 /**
+ * The calendar month a timestamp falls in, as "2026-09".
+ *
+ * Sortable as a string, which is the whole reason for the shape: it is both the chart's x value
+ * and the heading the roster groups people under, and those two have to agree. The viewer's own
+ * timezone, like formatDate — a dashboard reads in the timezone of whoever opened it.
+ */
+export function monthKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** A month key as a person reads it: "Sep 2026". */
+export function monthLabel(key: string, locale?: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleString(locale, {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Several timestamp series counted into the same months — what the dashboard chart draws.
+ *
+ * One bucket per calendar month from the earliest timestamp in any series to `now`, including
+ * the months where nothing happened: an axis that skips a quiet month puts two busy months side
+ * by side and reads as steady traffic.
+ */
+export function byMonth(
+  series: number[][],
+  now: number = Date.now(),
+): { key: string; counts: number[] }[] {
+  const all = series.flat();
+  if (all.length === 0) return [];
+
+  const counted = series.map((s) =>
+    s.reduce((m, ms) => m.set(monthKey(ms), (m.get(monthKey(ms)) ?? 0) + 1), new Map<string, number>()),
+  );
+
+  // Not Math.min(...all): a spread is an argument list, and this one is as long as the renders
+  // table.
+  const first = new Date(all.reduce((a, b) => Math.min(a, b)));
+  const end = new Date(now);
+  const rows: { key: string; counts: number[] }[] = [];
+
+  for (
+    const cursor = new Date(first.getFullYear(), first.getMonth(), 1);
+    cursor <= end;
+    cursor.setMonth(cursor.getMonth() + 1)
+  ) {
+    const key = monthKey(+cursor);
+    rows.push({ key, counts: counted.map((m) => m.get(key) ?? 0) });
+  }
+
+  return rows;
+}
+
+/**
  * How many renders an account gets a day, and when the day turns over.
  *
  * Mirrors the startRender resolver in durslel-service, which is what actually enforces this —

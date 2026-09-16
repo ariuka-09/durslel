@@ -69,6 +69,12 @@ export const renderTypeDefs = gql`
     the admin dashboard's one query. Anyone else asking for someone else's is refused.
     """
     getRenders(creatorId: ID): [Render!]!
+    """
+    Every render by everyone, newest first — what the admin dashboard's chart counts per month.
+    Admin only, gated on the session token the way users is. Distinct from getRenders because
+    that one's no-argument case means "mine", which the history sidebar depends on.
+    """
+    allRenders: [Render!]!
     getRender(id: ID!): Render
     """
     Look up by storage key. What the app has in hand when reopening a render from its video URL.

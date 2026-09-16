@@ -114,6 +114,12 @@ export type MutationUpsertUserArgs = {
 
 export type Query = {
   __typename?: 'Query';
+  /**
+   * Every render by everyone, newest first — what the admin dashboard's chart counts per month.
+   * Admin only, gated on the session token the way users is. Distinct from getRenders because
+   * that one's no-argument case means "mine", which the history sidebar depends on.
+   */
+  allRenders: Array<Render>;
   getRender?: Maybe<Render>;
   /** Look up by storage key. What the app has in hand when reopening a render from its video URL. */
   getRenderByJobId?: Maybe<Render>;
@@ -369,6 +375,7 @@ export type MutationResolvers<ContextType = Context, ParentType extends Resolver
 };
 
 export type QueryResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
+  allRenders?: Resolver<Array<ResolversTypes['Render']>, ParentType, ContextType>;
   getRender?: Resolver<Maybe<ResolversTypes['Render']>, ParentType, ContextType, RequireFields<QueryGetRenderArgs, 'id'>>;
   getRenderByJobId?: Resolver<Maybe<ResolversTypes['Render']>, ParentType, ContextType, RequireFields<QueryGetRenderByJobIdArgs, 'jobId'>>;
   getRenders?: Resolver<Array<ResolversTypes['Render']>, ParentType, ContextType, Partial<QueryGetRendersArgs>>;

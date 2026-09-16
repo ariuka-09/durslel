@@ -30,6 +30,22 @@ export const getRenders: QueryResolvers['getRenders'] = async (_, { creatorId },
 };
 
 /**
+ * Every render, for the dashboard's per-month chart.
+ *
+ * No expireStale: the chart counts rows by the day they were requested, and a stale PENDING row
+ * counts the same either way.
+ */
+export const allRenders: QueryResolvers['allRenders'] = async (_, __, ctx) => {
+  requireAdmin(ctx);
+
+  const db = drizzleProvider(ctx.env);
+
+  // ponytail: whole table to the browser, which buckets it. Group by month in SQL when the row
+  // count makes the payload worth caring about.
+  return db.select().from(renderTable).orderBy(desc(renderTable.createdAt));
+};
+
+/**
  * Every single-render lookup is scoped to the caller, so another account's id reads as absent
  * rather than forbidden. Confirming that someone else's render exists is itself a leak.
  */

@@ -69,6 +69,15 @@
   --warn: light-dark(#8a6100, #e2b75a);
   --ok: light-dark(#3f7a55, #7fcb98);
   --bad: light-dark(#b24657, #f28b9b);
+
+  /* The dashboard chart's two series. Their own tokens rather than a reuse of --accent and a
+     render state: two bars standing next to each other have to stay apart for a colourblind
+     reader, and a status colour is free to move for reasons that have nothing to do with that.
+     Checked against the panel they sit on in both schemes — purple/orange, worst-case ΔE 24.9
+     (protan) light and 21.8 (deutan) dark. The dark pair is stepped for the dark panel, not the
+     light pair lightened. Re-run the check when changing either value. */
+  --series-signups: light-dark(#7a5cb8, #9a7ada);
+  --series-renders: light-dark(#c2701c, #c2841f);
 }
 
 :root[data-theme="light"] {
@@ -94,6 +103,8 @@
   --color-warn: var(--warn);
   --color-ok: var(--ok);
   --color-bad: var(--bad);
+  --color-series-signups: var(--series-signups);
+  --color-series-renders: var(--series-renders);
 
   --radius-card: 20px;
   --shadow-soft: 0 10px 30px -12px light-dark(rgb(94 68 153 / 0.2), rgb(0 0 0 / 0.6));

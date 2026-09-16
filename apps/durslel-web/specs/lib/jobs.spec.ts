@@ -1,4 +1,12 @@
-import { FREE_DAILY_LIMIT, dayStart, formatDate, makeTitle, rendersLeftToday } from '@/lib/jobs';
+import {
+  FREE_DAILY_LIMIT,
+  byMonth,
+  dayStart,
+  formatDate,
+  makeTitle,
+  monthKey,
+  rendersLeftToday,
+} from '@/lib/jobs';
 
 describe('makeTitle', () => {
   it('is the prompt, whitespace collapsed', () => {
@@ -34,6 +42,43 @@ describe('formatDate', () => {
 
   it('yields no date for a nonsense timestamp rather than Invalid Date', () => {
     expect(formatDate(Number.NaN, 'en-US', 'UTC')).toBe('');
+  });
+});
+
+describe('byMonth', () => {
+  /** Local time, like the chart itself — built from local constructors so the zone cancels out. */
+  const at = (year: number, month: number, day = 1) => +new Date(year, month - 1, day, 12);
+
+  it('counts each series into the same months', () => {
+    const rows = byMonth(
+      [[at(2026, 7, 3), at(2026, 7, 20)], [at(2026, 7, 4), at(2026, 8, 9), at(2026, 8, 11)]],
+      at(2026, 8, 28),
+    );
+
+    expect(rows).toEqual([
+      { key: '2026-07', counts: [2, 1] },
+      { key: '2026-08', counts: [0, 2] },
+    ]);
+  });
+
+  /** The point of the range: a quiet month is a gap on the axis, not a month that never existed. */
+  it('keeps the months where nothing happened', () => {
+    const rows = byMonth([[at(2025, 11, 2)], [at(2026, 2, 6)]], at(2026, 2, 20));
+
+    expect(rows.map((r) => r.key)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
+    expect(rows[1].counts).toEqual([0, 0]);
+  });
+
+  it('draws nothing at all when no series has a point', () => {
+    expect(byMonth([[], []], at(2026, 2, 20))).toEqual([]);
+  });
+
+  it('crosses a year end without a 13th month', () => {
+    expect(monthKey(at(2025, 12, 31))).toBe('2025-12');
+    expect(byMonth([[at(2025, 12, 31)]], at(2026, 1, 1)).map((r) => r.key)).toEqual([
+      '2025-12',
+      '2026-01',
+    ]);
   });
 });
 
