@@ -1,141 +1,71 @@
 {
-  // Keeps its original name while the repo is called durslel — see durslel-service/wrangler.jsonc.
-  // durslel-service binds to this Worker by this exact name.
+  // The app: Next.js on the Worker through OpenNext, with no container. Pages, /api/solve and
+  // /api/pay run here; renders run on dursel-web's container (wrangler.renderer.jsonc), which
+  // durslel-service reaches through its own binding. A UI change deploys this Worker alone.
+  //
+  // Deploy through the nx deploy/deploy-test targets, never a bare `opennextjs-cloudflare deploy`.
+  // OpenNext copies every .env file it finds into the Worker bundle (.open-next/cloudflare/
+  // next-env.mjs), .env.local included, so a build on a dev machine would ship its local secrets
+  // and its test Clerk key. The targets empty that file before deploying and set the publishable
+  // key on the command line; every runtime value comes from the vars below and `wrangler secret`.
   //
   // Bindings live in the environments below rather than up here, because wrangler does not inherit
-  // bindings into a named environment — only non-binding settings like the ones directly below.
-  "name": "dursel-web",
+  // bindings into a named environment.
+  "name": "durslel-web",
   "account_id": "8341d4b31e574cb9873ce1bb80671685",
   "compatibility_date": "2026-08-01",
-  "compatibility_flags": ["nodejs_compat"],
+  // global_fetch_strictly_public: server code here fetches durslel-service at its workers.dev
+  // address, and Cloudflare refuses a Worker fetching another Worker on the same zone with 1042
+  // unless the request goes out over the public internet.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
-  "main": "worker/index.ts",
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ManimContainer"] }],
+  "main": "worker/app.ts",
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "observability": { "enabled": true },
 
-  // `wrangler dev` runs with no --env, so this is the local-development binding set. It points at
-  // the TEST bucket and the TEST service on purpose: a local Worker writing where real users read
-  // is the mistake this split exists to prevent.
-  "containers": [
-    {
-      // standard-1 = 1/2 vCPU, 4 GiB memory, 8 GB disk. Memory is the binding cost: at ~60s a
-      // render, the Workers Paid plan's included 25 GiB-hours covers roughly 375 renders/month.
-      "class_name": "ManimContainer",
-      "image": "./Dockerfile",
-      // Built from the repo root: dependencies live in the root node_modules, so a build scoped
-      // to this directory would have nothing to install.
-      "image_build_context": "../..",
-      "instance_type": "standard-1",
-      "max_instances": 1
-    }
-  ],
-  "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
-  // Lets the Worker serve finished videos straight from R2. Replaying an old render then costs an
-  // R2 GET instead of waking a container, which is both faster and cheaper. Serving needs only
-  // this binding — the S3 credentials in the secrets are for the container's uploads.
-  //
-  // No D1 binding anywhere here on purpose: the database belongs to durslel-service.
+  // `wrangler dev` runs with no --env: test bucket and test service, never production.
   "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos-test" }],
-  // APP_ORIGIN is where Wire sends the buyer back after checkout. It cannot be derived from the
-  // request: inside the container the Host is the container's own 0.0.0.0:3000, which is what
-  // sent buyers to https://0.0.0.0:3000/?paid=BASIC instead of back to the app.
   "vars": {
     "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql",
-    "APP_ORIGIN": "https://dursel-web-test.ariuntuguldur3.workers.dev"
+    "APP_ORIGIN": "https://durslel-web-test.ariuntuguldur3.workers.dev"
   },
 
   "env": {
-    // One container, sized for four concurrent renders rather than scaled out to more instances.
-    // manim is single-threaded (1.09 CPU-seconds per wall-second, measured), so a render can only
-    // occupy one core: standard-3's two cores carry four at roughly 13s of manim each, where
-    // standard-1's half core would take about 51s. A fifth waits in lib/queue.ts rather than
-    // stealing time from the four already going.
-    //
-    // Vertical rather than horizontal because CPU bills on use while memory bills for uptime: a
-    // bigger box costs the same CPU for the same work, whereas a second instance would add a
-    // second idle tail and a second cold start of a 438 MB image.
     "test": {
-      "name": "dursel-web-test",
-      "containers": [
-        {
-          "class_name": "ManimContainer",
-          "image": "./Dockerfile",
-          "image_build_context": "../..",
-          "instance_type": "standard-3",
-          "max_instances": 1
-        }
-      ],
-      "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
+      "name": "durslel-web-test",
       "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos-test" }],
-      // Read by lib/graphql.ts inside the container. Without it the code falls back to its
-      // hardcoded production default, and the test app would write renders into the production
-      // database. worker/index.ts is what forwards it into the container's environment.
-      //
-      // WIRE_ALLOW_LIVE lifts the guard in lib/wire.ts, which otherwise refuses an sk_live_ key.
-      // Deliberate: Wire issues no test key for this account, so the only way to exercise payments
-      // is the live one. Every checkout link this deployment mints is payable with real money.
-      // Production has no such var — there the guard is meant to stay on until a real decision.
+      // WIRE_ALLOW_LIVE and GEMINI_THINKING_LEVEL as on dursel-web-test — see
+      // wrangler.renderer.jsonc for why each is set.
       "vars": {
         "GRAPHQL_URL": "https://dursel-service-test.ariuntuguldur3.workers.dev/graphql",
-        "APP_ORIGIN": "https://dursel-web-test.ariuntuguldur3.workers.dev",
+        "APP_ORIGIN": "https://durslel-web-test.ariuntuguldur3.workers.dev",
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_YXJ0aXN0aWMtZmFsY29uLTcwNTcuY2xlcmsuYWNjb3VudHMuZGV2JA",
         "WIRE_ALLOW_LIVE": "1",
-      // Overrides the LOW default in lib/generate.ts. LOW was chosen for latency — measured at
-      // 5-9s and zero thinking tokens against 22.8s at default effort — but it is also why scenes
-      // that need any reasoning about the manim API come back wrong and get rerolled, and a
-      // reroll costs another Gemini call AND another render. MEDIUM buys that reasoning back for
-      // roughly 15s inside a 240s budget.
-      //
-      // Watch the reroll rate rather than the per-call latency: this is a win only if attempts
-      // per render go down. Set back to LOW here if they do not.
         "GEMINI_THINKING_LEVEL": "MEDIUM"
       }
     },
 
-    // `name` is pinned rather than left to wrangler, which would otherwise append the environment
-    // and deploy a *new* Worker at dursel-web-production. This is the Worker already serving
-    // traffic, and the one durslel-service's RENDERER binding resolves to.
+    // durslel.com moved here from dursel-web on 2026-09-15. www stays a zone route, as it was there:
+    // it has its own DNS record, which a custom domain refuses. The route is more specific than
+    // dursel-web's old `*durslel.com/*`, so it wins while that one still exists.
+    // Rollback: attach durslel.com back to dursel-web (dashboard → Workers → dursel-web → Domains)
+    // and delete these; dursel-web's image still serves the whole app.
     "production": {
-      "name": "dursel-web",
-      "containers": [
-        {
-          // Pinned for the same reason `name` above is: with --env, wrangler derives the
-          // container application name as <worker>-<class>-<env> and tries to CREATE
-          // "dursel-web-manimcontainer-production". The Durable Object namespace already carries
-          // the application named below — created by an earlier deploy without --env — and a
-          // namespace may only have one, so the create fails with
-          // DURABLE_OBJECT_ALREADY_HAS_APPLICATION. Naming it explicitly makes the deploy update
-          // the running application instead.
-          //
-          // Do NOT pin the test block the same way: its application really is called
-          // "dursel-web-test-manimcontainer-test", and pinning would break the match there.
-          "name": "dursel-web-manimcontainer",
-          "class_name": "ManimContainer",
-          "image": "./Dockerfile",
-          "image_build_context": "../..",
-          // Matches the test block, and for the same reason: MAX_CONCURRENT_RENDERS=4 is baked
-          // into the Dockerfile, so lib/queue.ts admits four renders here regardless of the box
-          // underneath. standard-1's half core split four ways ran each of them at roughly 51s
-          // of manim against a 90s per-attempt timeout and a 240s job budget — one reroll and
-          // the job was out of time. standard-3's two cores carry the same four at about 13s.
-          "instance_type": "standard-3",
-          // Nothing addresses a second instance: worker/index.ts routes every request to
-          // MANIM.getByName("studio"), a single Durable Object. Left at 2 for deploy rollover.
-          "max_instances": 2
-        }
+      "name": "durslel-web",
+      "routes": [
+        { "pattern": "durslel.com", "custom_domain": true },
+        { "pattern": "durslel.com/*", "zone_name": "durslel.com" },
+        { "pattern": "www.durslel.com/*", "zone_name": "durslel.com" }
       ],
-      "durable_objects": { "bindings": [{ "name": "MANIM", "class_name": "ManimContainer" }] },
       "r2_buckets": [{ "binding": "VIDEOS", "bucket_name": "manim-studio-videos" }],
       "vars": {
         "GRAPHQL_URL": "https://dursel-service.ariuntuguldur3.workers.dev/graphql",
-        "APP_ORIGIN": "https://dursel-web.ariuntuguldur3.workers.dev",
-      // Overrides the LOW default in lib/generate.ts. LOW was chosen for latency — measured at
-      // 5-9s and zero thinking tokens against 22.8s at default effort — but it is also why scenes
-      // that need any reasoning about the manim API come back wrong and get rerolled, and a
-      // reroll costs another Gemini call AND another render. MEDIUM buys that reasoning back for
-      // roughly 15s inside a 240s budget.
-      //
-      // Watch the reroll rate rather than the per-call latency: this is a win only if attempts
-      // per render go down. Set back to LOW here if they do not.
+        "APP_ORIGIN": "https://durslel.com",
+        // The production Clerk instance, which only signs people in on durslel.com.
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZHVyc2xlbC5jb20k",
+        // Live payments on, by the owner's decision on 2026-09-16. Lifts the sk_live_ guard in
+        // lib/wire.ts: every checkout here charges real money.
+        "WIRE_ALLOW_LIVE": "1",
         "GEMINI_THINKING_LEVEL": "MEDIUM"
       }
     }

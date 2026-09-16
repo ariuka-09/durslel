@@ -81,6 +81,21 @@ export interface Attempt {
   error: string;
 }
 
+export type Lang = "en" | "mn";
+
+/**
+ * Said on every attempt, repair included, so a scene fixed on attempt two does not come back in a
+ * different language from the one attempt one was asked for. Stated for English too: a prompt
+ * typed in Mongolian would otherwise pull the labels into Mongolian while the site is in English.
+ *
+ * Cyrillic is safe to ask for because every label is a `Text` (Pango, which the container's
+ * DejaVu font covers, Ө and Ү included) — never LaTeX, which would choke on it.
+ */
+const LANGUAGE_RULE: Record<Lang, string> = {
+  en: "Write every piece of on-screen text in English.",
+  mn: "Write every piece of on-screen text — titles, labels, captions, step explanations — in Mongolian, in Cyrillic script. Keep mathematical notation, numbers and variable names as they are.",
+};
+
 /**
  * One Gemini call. `previous` is set on the repair attempt and carries the failed code plus
  * its verbatim traceback, so the model fixes that specific error rather than starting over.
@@ -97,6 +112,7 @@ export async function generateScene(
    * became immortal on 2026-09-06.
    */
   budgetMs: number,
+  lang: Lang = "en",
 ): Promise<{ code: string } | { error: RenderError }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -113,9 +129,10 @@ export async function generateScene(
   const ai = new GoogleGenAI({ apiKey });
   const system = await loadSystemPrompt();
 
+  const ask = `Animate this: ${prompt}\n\n${LANGUAGE_RULE[lang]}`;
   const userContent = previous
     ? [
-        `Animate this: ${prompt}`,
+        ask,
         "",
         "Your previous attempt did not render. Here is the file you wrote:",
         "",
@@ -131,7 +148,7 @@ export async function generateScene(
         "",
         "Fix that specific error and return the complete corrected file.",
       ].join("\n")
-    : `Animate this: ${prompt}`;
+    : ask;
 
   let response;
   try {

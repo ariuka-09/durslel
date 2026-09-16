@@ -64,6 +64,9 @@ export type Mutation = {
    * Requests a render and returns immediately with a PENDING row. manim takes up to three
    * minutes, far longer than a request should be held open, so the client polls getRender until
    * status leaves PENDING rather than waiting on this call.
+   *
+   * lang is the language of the video's on-screen text: "mn" for Mongolian, anything else (or
+   * nothing) for English.
    */
   startRender: Render;
   updateRender: Render;
@@ -93,6 +96,7 @@ export type MutationDeleteRenderArgs = {
 
 
 export type MutationStartRenderArgs = {
+  lang?: InputMaybe<Scalars['String']['input']>;
   prompt: Scalars['String']['input'];
 };
 
@@ -109,6 +113,12 @@ export type MutationUpsertUserArgs = {
 
 export type Query = {
   __typename?: 'Query';
+  /**
+   * Every render by everyone, newest first — what the admin dashboard's chart counts per month.
+   * Admin only, gated on the session token the way users is. Distinct from getRenders because
+   * that one's no-argument case means "mine", which the history sidebar depends on.
+   */
+  allRenders: Array<Render>;
   getRender?: Maybe<Render>;
   /** Look up by storage key. What the app has in hand when reopening a render from its video URL. */
   getRenderByJobId?: Maybe<Render>;
@@ -258,6 +268,11 @@ export type GetRendersQueryVariables = Exact<{
 
 export type GetRendersQuery = { __typename?: 'Query', getRenders: Array<{ __typename?: 'Render', id: string, jobId: string, title: string, url?: string | null, status: RenderStatus, error?: string | null, prompt: string, sceneClass?: string | null, attempts: number, durationMs?: number | null, createdAt: number }> };
 
+export type AllRendersQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type AllRendersQuery = { __typename?: 'Query', allRenders: Array<{ __typename?: 'Render', id: string, createdAt: number }> };
+
 export type GetRenderQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
@@ -267,6 +282,7 @@ export type GetRenderQuery = { __typename?: 'Query', getRender?: { __typename?: 
 
 export type StartRenderMutationVariables = Exact<{
   prompt: Scalars['String']['input'];
+  lang?: InputMaybe<Scalars['String']['input']>;
 }>;
 
 
@@ -347,6 +363,46 @@ export type GetRendersQueryHookResult = ReturnType<typeof useGetRendersQuery>;
 export type GetRendersLazyQueryHookResult = ReturnType<typeof useGetRendersLazyQuery>;
 export type GetRendersSuspenseQueryHookResult = ReturnType<typeof useGetRendersSuspenseQuery>;
 export type GetRendersQueryResult = Apollo.QueryResult<GetRendersQuery, GetRendersQueryVariables>;
+export const AllRendersDocument = gql`
+    query AllRenders {
+  allRenders {
+    id
+    createdAt
+  }
+}
+    `;
+
+/**
+ * __useAllRendersQuery__
+ *
+ * To run a query within a React component, call `useAllRendersQuery` and pass it any options that fit your needs.
+ * When your component renders, `useAllRendersQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useAllRendersQuery({
+ *   variables: {
+ *   },
+ * });
+ */
+export function useAllRendersQuery(baseOptions?: Apollo.QueryHookOptions<AllRendersQuery, AllRendersQueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<AllRendersQuery, AllRendersQueryVariables>(AllRendersDocument, options);
+      }
+export function useAllRendersLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<AllRendersQuery, AllRendersQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<AllRendersQuery, AllRendersQueryVariables>(AllRendersDocument, options);
+        }
+export function useAllRendersSuspenseQuery(baseOptions?: Apollo.SuspenseQueryHookOptions<AllRendersQuery, AllRendersQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<AllRendersQuery, AllRendersQueryVariables>(AllRendersDocument, options);
+        }
+export type AllRendersQueryHookResult = ReturnType<typeof useAllRendersQuery>;
+export type AllRendersLazyQueryHookResult = ReturnType<typeof useAllRendersLazyQuery>;
+export type AllRendersSuspenseQueryHookResult = ReturnType<typeof useAllRendersSuspenseQuery>;
+export type AllRendersQueryResult = Apollo.QueryResult<AllRendersQuery, AllRendersQueryVariables>;
 export const GetRenderDocument = gql`
     query GetRender($id: ID!) {
   getRender(id: $id) {
@@ -394,8 +450,8 @@ export type GetRenderLazyQueryHookResult = ReturnType<typeof useGetRenderLazyQue
 export type GetRenderSuspenseQueryHookResult = ReturnType<typeof useGetRenderSuspenseQuery>;
 export type GetRenderQueryResult = Apollo.QueryResult<GetRenderQuery, GetRenderQueryVariables>;
 export const StartRenderDocument = gql`
-    mutation StartRender($prompt: String!) {
-  startRender(prompt: $prompt) {
+    mutation StartRender($prompt: String!, $lang: String) {
+  startRender(prompt: $prompt, lang: $lang) {
     id
     jobId
     title
@@ -421,6 +477,7 @@ export type StartRenderMutationFn = Apollo.MutationFunction<StartRenderMutation,
  * const [startRenderMutation, { data, loading, error }] = useStartRenderMutation({
  *   variables: {
  *      prompt: // value for 'prompt'
+ *      lang: // value for 'lang'
  *   },
  * });
  */

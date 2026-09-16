@@ -69,6 +69,12 @@ export const renderTypeDefs = gql`
     the admin dashboard's one query. Anyone else asking for someone else's is refused.
     """
     getRenders(creatorId: ID): [Render!]!
+    """
+    Every render by everyone, newest first — what the admin dashboard's chart counts per month.
+    Admin only, gated on the session token the way users is. Distinct from getRenders because
+    that one's no-argument case means "mine", which the history sidebar depends on.
+    """
+    allRenders: [Render!]!
     getRender(id: ID!): Render
     """
     Look up by storage key. What the app has in hand when reopening a render from its video URL.
@@ -81,8 +87,11 @@ export const renderTypeDefs = gql`
     Requests a render and returns immediately with a PENDING row. manim takes up to three
     minutes, far longer than a request should be held open, so the client polls getRender until
     status leaves PENDING rather than waiting on this call.
+
+    lang is the language of the video's on-screen text: "mn" for Mongolian, anything else (or
+    nothing) for English.
     """
-    startRender(prompt: String!): Render!
+    startRender(prompt: String!, lang: String): Render!
     """
     Records where a render has got to. Called by the renderer, not by a browser: it runs after the
     request that started it is long gone, so it authenticates as the service. Usually the final

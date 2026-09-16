@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 // Same host robots.ts advertises: crawlers ignore sitemap entries on a different host than the
-// sitemap itself, so this cannot follow APP_ORIGIN (still the workers.dev address).
+// sitemap itself, so the host is pinned here rather than read from the environment.
 const ORIGIN = "https://durslel.com";
 
 /** Public pages only. /admin stays out: listing it would only invite crawlers to a locked door. */

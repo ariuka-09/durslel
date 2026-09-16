@@ -17,6 +17,15 @@ query GetRenders($creatorId: ID) {
   }
 }
 
+# The admin chart's second series. Two fields only — it counts rows per month and draws nothing
+# else, so pulling a card's worth of columns for every render on the service would be waste.
+query AllRenders {
+  allRenders {
+    id
+    createdAt
+  }
+}
+
 # What the progress bar polls while a render is in flight.
 query GetRender($id: ID!) {
   getRender(id: $id) {
@@ -30,8 +39,8 @@ query GetRender($id: ID!) {
   }
 }
 
-mutation StartRender($prompt: String!) {
-  startRender(prompt: $prompt) {
+mutation StartRender($prompt: String!, $lang: String) {
+  startRender(prompt: $prompt, lang: $lang) {
     id
     jobId
     title

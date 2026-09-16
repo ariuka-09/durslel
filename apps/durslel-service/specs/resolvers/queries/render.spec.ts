@@ -1,4 +1,4 @@
-import { getRender, getRenderByJobId, getRenders } from '@/resolvers/queries/render';
+import { allRenders, getRender, getRenderByJobId, getRenders } from '@/resolvers/queries/render';
 import { RenderStatus } from '@/types/generated';
 import { adminCtx, anonCtx, ctx, info, render, returning, written } from '../test-helpers';
 
@@ -45,6 +45,28 @@ describe('getRenders', () => {
     returning([render]);
 
     await expect(getRenders!({}, { creatorId: 'user_owner' }, ctx, info)).resolves.toEqual([render]);
+  });
+});
+
+describe('allRenders', () => {
+  it('returns everyone\'s renders for an admin', async () => {
+    returning([render]);
+
+    await expect(allRenders!({}, {}, adminCtx, info)).resolves.toEqual([render]);
+  });
+
+  /** The whole table, so the gate is the only thing standing between a user and everyone's work. */
+  it('refuses a signed-in user who is not an admin, without touching the database', async () => {
+    const db = returning([render]);
+
+    await expect(allRenders!({}, {}, ctx, info)).rejects.toThrow('Not an admin');
+    expect(db).not.toHaveBeenCalled();
+  });
+
+  it('refuses an anonymous caller', async () => {
+    returning([render]);
+
+    await expect(allRenders!({}, {}, anonCtx, info)).rejects.toThrow();
   });
 });
 

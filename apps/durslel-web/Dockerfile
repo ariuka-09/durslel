@@ -19,6 +19,10 @@ COPY package.json package-lock.json ./
 # deploy: npm's default is to give up quickly on ECONNRESET.
 RUN npm ci --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=180000
 COPY . .
+# Set from image_vars in wrangler.jsonc for the workers.dev builds. As an environment variable it
+# beats apps/durslel-web/.env.production, which holds the production key and is used when this is
+# unset.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 # `output: "standalone"` plus outputFileTracingRoot emits a self-contained server that reaches
 # back into the root node_modules for only the modules actually imported.
 RUN npx next build apps/durslel-web

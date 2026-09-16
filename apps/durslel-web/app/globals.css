@@ -35,22 +35,57 @@
 }
 
 /*
- * Manim's own visual vocabulary: the default canvas ground, the real palette constants, and
- * hairline geometry. Deliberately a single dark look — the tool should read like the thing it
- * makes, and manim renders on #0D0D0D.
+ * "Lilac": a soft look — lavender accent, round corners, and shadows doing the work hairlines
+ * used to. Light and dark, each token written once as light-dark(light, dark).
+ *
+ * Which one applies is color-scheme's decision: the system setting by default, or the `theme`
+ * cookie, which the root layout turns into data-theme on <html> before the first byte so a dark
+ * page never flashes light. color-scheme also darkens scrollbars and native form controls.
+ *
+ * Every text colour clears 4.5:1 against --ground and --panel in both schemes, and --on-accent
+ * clears it on --accent and --accent-strong. Re-check that when changing a value.
  */
 :root {
-  --ground: #0d0d0d;
-  --panel: #14161a;
-  --rule: #2a2e35;
-  --ink: #e8e6e3;
-  --muted: #8a8f98;
+  color-scheme: light dark;
 
-  /* manim constants, verbatim */
-  --blue-d: #236b8e;
-  --yellow-e: #e8c11c;
-  --green-c: #83c167;
-  --red-c: #fc6255;
+  --ground: light-dark(#f7f4fa, #16131b);
+  --panel: light-dark(#ffffff, #1f1b26);
+  --rule: light-dark(#ebe4f1, #322b3d);
+  --ink: light-dark(#2e2735, #ece7f3);
+  --muted: light-dark(#6c6378, #a69db3);
+
+  /* The one brand colour: the wordmark, the primary button, the current row. It lightens in the
+     dark, so the text on a filled button flips from white to near-black with it. */
+  --accent: light-dark(#7a5cb8, #b39ae8);
+  --accent-strong: light-dark(#5e4499, #c8b5f2);
+  --on-accent: light-dark(#ffffff, #1b1622);
+  /* Accent as text: on --tint, and wherever small type needs the brand colour. */
+  --accent-ink: light-dark(#5e4499, #cbb8f7);
+  --tint: light-dark(#efe8fa, #2c2540);
+
+  /* Render states. Queued is kept apart from rendering: nothing is happening yet, and the two
+     are a second apart on screen when a burst arrives. */
+  --queued: light-dark(#4f6f9f, #93b1e6);
+  --warn: light-dark(#8a6100, #e2b75a);
+  --ok: light-dark(#3f7a55, #7fcb98);
+  --bad: light-dark(#b24657, #f28b9b);
+
+  /* The dashboard chart's two series. Their own tokens rather than a reuse of --accent and a
+     render state: two bars standing next to each other have to stay apart for a colourblind
+     reader, and a status colour is free to move for reasons that have nothing to do with that.
+     Checked against the panel they sit on in both schemes — purple/orange, worst-case ΔE 24.9
+     (protan) light and 21.8 (deutan) dark. The dark pair is stepped for the dark panel, not the
+     light pair lightened. Re-run the check when changing either value. */
+  --series-signups: light-dark(#7a5cb8, #9a7ada);
+  --series-renders: light-dark(#c2701c, #c2841f);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -59,12 +94,21 @@
   --color-rule: var(--rule);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
-  --color-blue-d: var(--blue-d);
-  --color-yellow-e: var(--yellow-e);
-  --color-green-c: var(--green-c);
-  --color-red-c: var(--red-c);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-tint: var(--tint);
+  --color-queued: var(--queued);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-bad: var(--bad);
+  --color-series-signups: var(--series-signups);
+  --color-series-renders: var(--series-renders);
 
-  --font-display: var(--font-display);
+  --radius-card: 20px;
+  --shadow-soft: 0 10px 30px -12px light-dark(rgb(94 68 153 / 0.2), rgb(0 0 0 / 0.6));
+
   --font-mono: var(--font-mono);
   --font-sans: 'GIP', 'Helvetica Neue', Arial, sans-serif;
 }
@@ -98,13 +142,25 @@ body {
   }
 }
 
+/* The toggles animate themselves during a crossfade (the theme icon spins, the language pill
+   slides); a fading snapshot of their old state would ghost behind the live one. */
+::view-transition-old(theme-toggle),
+::view-transition-old(lang-toggle) {
+  display: none;
+}
+
+::view-transition-new(theme-toggle),
+::view-transition-new(lang-toggle) {
+  animation: none;
+}
+
 ::selection {
-  background: var(--blue-d);
-  color: var(--ink);
+  background: var(--tint);
+  color: var(--accent-ink);
 }
 
 :focus-visible {
-  outline: 2px solid var(--yellow-e);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 

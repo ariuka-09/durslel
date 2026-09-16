@@ -2,7 +2,7 @@
 
 import { SignInButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   RenderStatus,
@@ -19,10 +19,11 @@ import { tierLabel } from "@/lib/plans";
 import {
   FREE_DAILY_LIMIT,
   STATUS_COLOR,
-  STATUS_TEXT,
   formatDate,
   rendersLeftToday,
 } from "@/lib/jobs";
+import { LangToggle, useLang, useT } from "@/shared/i18n";
+import { ThemeToggle } from "@/shared/theme";
 
 type RenderSummary = GetRendersQuery["getRenders"][number];
 
@@ -45,10 +46,13 @@ export default function Home() {
   // nothing is rendering yet and the daily limit has not been touched.
   const [reading, setReading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const isAdmin = useIsAdmin();
+  const t = useT();
+  const lang = useLang();
 
   const { data: history, refetch: refetchHistory } = useGetRendersQuery({
     skip: !isSignedIn,
@@ -114,6 +118,31 @@ export default function Home() {
     }, STALL_MS);
     return () => clearTimeout(timer);
   }, [pending, queued, activeId]);
+
+  // Keeps the video in view while typing on a phone. iOS lays its keyboard over the page and then
+  // pans up to reveal the focused box, taking the header and video off the top. The app is fixed
+  // and sized to the part of the screen the keyboard leaves, and its top follows that pan, so the
+  // flex column puts the composer just above the keyboard with everything else still showing.
+  // Following the pan rather than scrolling it back: iOS can pan the visual viewport of a page
+  // that has no scroll of its own, which window.scrollTo cannot undo. Measured in layout pixels
+  // (height × scale) so pinch-zooming does not shrink the app, and the top is left at 0 while
+  // zoomed so panning still moves across it.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement.style;
+    const sync = () => {
+      root.setProperty("--app-height", `${vv.height * vv.scale}px`);
+      root.setProperty("--app-top", `${vv.scale === 1 ? vv.offsetTop : 0}px`);
+    };
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+    };
+  }, []);
 
   // Set when the buyer comes back from Wire's checkout page, which returns to /?paid=<tier>.
   // The payment is confirmed to the webhook, not to the browser, so the tier can arrive a moment
@@ -188,7 +217,8 @@ export default function Home() {
     setUploadError(null);
     // Apollo rejects on a GraphQL error; the hook's `error` is what renders it, and an
     // unhandled rejection here would take the whole handler down instead.
-    const { data } = await startRender({ variables: { prompt: text } }).catch(() => ({
+    // The site's language is the video's language: its on-screen text is written in it.
+    const { data } = await startRender({ variables: { prompt: text, lang } }).catch(() => ({
       data: null,
     }));
     // The row exists as PENDING before this resolves, so there is something to watch immediately.
@@ -201,38 +231,32 @@ export default function Home() {
   }
 
   /**
-   * A photographed or scanned problem, animated.
+   * A problem — typed into the box, or photographed or scanned — solved and animated.
    *
-   * /api/solve reads the file and answers with a brief; that brief is then started exactly like a
+   * /api/solve solves it and answers with a brief; that brief is then started exactly like a
    * typed prompt, so the queue, the daily limit, the repair loop and the history all apply to it
-   * without knowing a file was involved. It is also written into the box, so a misread problem is
-   * visible and can be corrected and rerun rather than only explaining itself four minutes later.
+   * without knowing a problem was involved. It is also written into the box, so a misread problem
+   * is visible and can be corrected and rerun rather than only explaining itself four minutes later.
    */
-  async function solve(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    // Cleared immediately: without this, picking the same file again fires no change event, so a
-    // failed read could not be retried without choosing a different file first.
-    e.target.value = "";
-    if (!file) return;
-
+  async function solve(field: "text" | "file", value: string | File) {
     setUploadError(null);
     setReading(true);
     try {
       const body = new FormData();
-      body.append("file", file);
+      body.append(field, value);
       const res = await fetch("/api/solve", { method: "POST", body });
       const json = (await res.json().catch(() => ({}))) as {
         prompt?: string;
         error?: string;
       };
       if (!res.ok || !json.prompt) {
-        setUploadError(json.error ?? "Could not read that file.");
+        setUploadError(json.error ?? t.unreadFile);
         return;
       }
       setPrompt(json.prompt);
       await run(json.prompt);
     } catch {
-      setUploadError("Could not reach the server.");
+      setUploadError(t.unreachable);
     } finally {
       setReading(false);
     }
@@ -244,17 +268,18 @@ export default function Home() {
 
   if (!isSignedIn) {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
-        <h1 className="font-display text-4xl tracking-tight">
-          Dur<span className="text-blue-d">slel</span>
+      <main className="relative flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
+        <div className="absolute right-5 top-3 flex items-center gap-2">
+          <LangToggle />
+          <ThemeToggle />
+        </div>
+        <h1 className="text-4xl font-extrabold tracking-tight">
+          Dur<span className="text-accent">slel</span>
         </h1>
-        <p className="max-w-sm text-sm text-muted">
-          Describe an animation, get a rendered manim scene. Sign in to render
-          and to keep your renders.
-        </p>
+        <p className="max-w-sm text-sm text-muted">{t.pitch}</p>
         <SignInButton mode="modal">
-          <button className="border border-yellow-e px-6 py-2.5 text-sm uppercase tracking-widest text-yellow-e">
-            Sign in with Google
+          <button className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-on-accent shadow-soft hover:bg-accent-strong">
+            {t.signIn}
           </button>
         </SignInButton>
       </main>
@@ -280,7 +305,7 @@ export default function Home() {
       );
 
   return (
-    <div className="flex min-h-full flex-1">
+    <div className="fixed inset-x-0 top-[var(--app-top,0px)] flex h-[var(--app-height,100dvh)]">
       <History
         renders={renders}
         current={activeId}
@@ -291,118 +316,118 @@ export default function Home() {
           setHistoryOpen(false);
           setCopied(false);
         }}
+        close={() => setHistoryOpen(false)}
         shown={historyOpen}
       />
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-baseline justify-between gap-4 border-b border-rule px-5 py-3">
-          <div className="flex items-baseline gap-3">
+      {/* On a phone the history slides over the whole screen; inert keeps the page it covers out
+          of the tab order meanwhile. */}
+      <main inert={historyOpen} className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between gap-2 border-b border-rule px-3 py-3 md:gap-4 md:px-5">
+          <div className="flex min-w-0 items-center gap-2 md:gap-3">
             <button
               type="button"
-              onClick={() => setHistoryOpen((v) => !v)}
-              className="border border-rule px-2 py-1 text-[10px] uppercase tracking-[0.15em] text-muted md:hidden"
+              onClick={() => setHistoryOpen(true)}
+              aria-label={t.history}
+              title={t.history}
+              className="grid size-9 shrink-0 place-items-center rounded-full text-ink hover:bg-tint md:hidden"
             >
-              {historyOpen ? "Close" : "History"}
+              <svg viewBox="0 0 16 16" className="size-4" aria-hidden>
+                <path
+                  d="M2 4h12M2 8h12M2 12h8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
             </button>
-            <h1 className="font-display text-2xl tracking-tight">
-              Dur<span className="text-blue-d">slel</span>
+            <h1 className="text-2xl font-extrabold tracking-tight">
+              Dur<span className="text-accent">slel</span>
             </h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-2 md:gap-4">
             {/* Says what is in force and goes where it can be changed — the same button whether
-                it reads Free or Studio, so there is one place to look either way.
-
-                TEMPORARY: hidden while the tier is FREE, so the app shows no upsell to someone
-                who has not paid. Only the pill goes — /pricing and /api/pay stay live, so a
-                direct link still buys a plan, and a subscriber still sees their own tier here.
-                Restore by deleting this condition and the closing brace after the </Link>. */}
-            {tier === SubscriptionTier.Free && !awaitingTier ? null : (
-              <Link
-                href="/pricing"
-                title={
-                  me?.me?.subscriptionUntil
-                    ? `Until ${new Date(me.me.subscriptionUntil).toLocaleDateString()}`
-                    : "Plans"
-                }
-                className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.15em] ${
-                  awaitingTier
-                    ? "border-yellow-e text-yellow-e"
-                    : tier === SubscriptionTier.Free
-                      ? "border-rule text-muted hover:border-yellow-e hover:text-yellow-e"
-                      : "border-green-c text-green-c"
-                }`}
-              >
-                {awaitingTier ? "Activating…" : tierLabel(tier)}
-              </Link>
-            )}
-            {left !== null ? (
-              <p
-                className={`text-xs uppercase tracking-[0.2em] ${
-                  left === 0 ? "text-red-c" : "text-muted"
-                }`}
-                title="Renders reset at midnight GMT+8"
-              >
-                {left}/{limit} today
-              </p>
-            ) : null}
-            <p
-              className={`text-xs uppercase tracking-[0.2em] ${
-                stalled
-                  ? "text-red-c"
-                  : active
-                    ? STATUS_COLOR[active.status]
-                    : "text-blue-d"
+                it reads Free or Studio, so there is one place to look either way. */}
+            {/* <Link
+              href="/pricing"
+              title={
+                me?.me?.subscriptionUntil
+                  ? t.until(new Date(me.me.subscriptionUntil).toLocaleDateString())
+                  : t.plans
+              }
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                awaitingTier
+                  ? "bg-tint text-warn"
+                  : tier === SubscriptionTier.Free
+                    ? "border border-rule text-muted hover:text-accent-ink"
+                    : "bg-tint text-accent-ink"
               }`}
             >
-              {starting
-                ? "starting"
-                : stalled
-                  ? "lost"
-                  : active
-                    ? STATUS_TEXT[active.status]
-                    : "ready"}
-            </p>
+              {awaitingTier ? t.activating : tierLabel(tier)}
+            </Link> */}
+            {left !== null ? (
+              <p
+                className={`text-xs font-medium ${
+                  left === 0 ? "text-bad" : "text-muted"
+                }`}
+                title={t.resetsAt}
+              >
+                {t.today(left, limit)}
+              </p>
+            ) : null}
             {/* The dashboard refuses anyone else anyway; not offering the link keeps a non-admin
-                from walking into a wall. */}
+                from walking into a wall. On a phone it lives in the history drawer instead. */}
             {isAdmin ? (
               <Link
                 href="/admin"
-                className="text-xs uppercase tracking-[0.2em] text-muted hover:text-ink"
+                className="hidden text-xs font-medium text-muted hover:text-ink md:block"
               >
-                Admin
+                {t.admin}
               </Link>
             ) : null}
+            <LangToggle />
+            <ThemeToggle />
             <UserButton />
           </div>
         </header>
 
+        {/* On a phone the composer sits under the video, as one card holding the box on top and
+            its two buttons below; from md up it is the row above the video. */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void run();
           }}
-          className="flex gap-2 border-b border-rule px-5 py-4"
+          className="order-last m-3 flex flex-wrap items-center gap-2 rounded-card border border-rule bg-panel p-2 shadow-soft has-[input:focus-visible]:border-accent md:order-none md:m-0 md:flex-nowrap md:rounded-none md:border-0 md:bg-transparent md:px-5 md:py-4 md:shadow-none"
         >
-          {/* A photo or scan of a problem, read and solved into the box beside it. A label rather
-              than a button because a file input cannot be styled, and hiding it inside the label
-              is what makes the whole control clickable. */}
-          <label
-            title="Photo or PDF of a problem — it is read, solved, and animated"
-            className={`shrink-0 border px-3 py-2 text-[11px] uppercase tracking-[0.15em] ${
-              busy || left === 0
-                ? "cursor-default border-rule text-muted opacity-30"
-                : "cursor-pointer border-rule text-ink hover:border-blue-d hover:text-blue-d"
-            }`}
+          {/* Solves what is typed in the box beside it; with the box empty, asks for a photo or
+              scan of the problem instead. Filled and bold so it never reads as another input. */}
+          <button
+            type="button"
+            title={t.problemHint}
+            disabled={busy || left === 0}
+            onClick={() =>
+              prompt.trim()
+                ? void solve("text", prompt)
+                : fileInput.current?.click()
+            }
+            className="shrink-0 cursor-pointer rounded-full border border-accent bg-tint px-4 py-2 text-sm font-medium text-accent-ink shadow-soft transition hover:bg-accent hover:text-on-accent active:scale-95 disabled:cursor-default disabled:border-rule disabled:bg-panel disabled:text-muted disabled:opacity-40 disabled:active:scale-100"
           >
-            {reading ? "Reading…" : "Problem"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf"
-              disabled={busy || left === 0}
-              onChange={solve}
-              className="hidden"
-            />
-          </label>
+            {reading ? t.reading : t.problem}
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Cleared immediately: without this, picking the same file again fires no change
+              // event, so a failed read could not be retried without choosing a different file.
+              e.target.value = "";
+              if (file) void solve("file", file);
+            }}
+            className="hidden"
+          />
           <input
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -415,60 +440,59 @@ export default function Home() {
                 void run();
               }
             }}
-            placeholder="plot sin(x) and sweep a vertical line across it"
-            className="flex-1 bg-panel border border-rule px-3 py-2 text-sm text-ink placeholder:text-muted disabled:opacity-50"
+            placeholder={t.placeholder}
+            className="order-first min-w-0 flex-1 basis-full bg-transparent px-3 py-2 text-base text-ink placeholder:text-muted focus-visible:outline-none disabled:opacity-50 md:order-none md:basis-auto md:rounded-full md:border md:border-rule md:bg-panel md:px-4 md:text-sm md:shadow-soft md:focus-visible:border-accent"
           />
           <button
             type="submit"
             disabled={busy || !prompt.trim() || left === 0}
-            className="border border-yellow-e px-5 py-2 text-sm text-yellow-e uppercase tracking-widest disabled:opacity-30 disabled:border-rule disabled:text-muted"
+            className="ml-auto shrink-0 rounded-full md:ml-0 bg-accent px-5 py-2 text-sm font-medium text-on-accent hover:bg-accent-strong disabled:bg-tint disabled:text-muted"
           >
-            {busy ? "…" : left === 0 ? "No renders left" : "Render"}
+            {busy ? "…" : left === 0 ? t.noneLeft : t.render}
           </button>
         </form>
 
-        <section className="flex flex-1 flex-col gap-4 bg-ground p-5 min-w-0">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-3 md:px-5 md:pb-5 md:pt-0">
           {stalled ? (
-            <div className="border border-red-c/60">
-              <p className="border-b border-red-c/40 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-red-c">
-                render lost
+            <div className="rounded-card border border-bad/25 bg-bad/5">
+              <p className="px-4 pt-3 text-xs font-medium text-bad">
+                {t.lostTitle}
               </p>
-              <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
-                Nothing has reported back on this render in five minutes, so it
-                is almost certainly gone. Try the prompt again.
+              <p className="px-4 pb-3 pt-1 text-xs leading-relaxed text-muted">
+                {t.lostBody}
               </p>
             </div>
           ) : null}
 
           {uploadError ? (
-            <div className="border border-red-c/60">
-              <p className="border-b border-red-c/40 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-red-c">
-                problem not read
+            <div className="rounded-card border border-bad/25 bg-bad/5">
+              <p className="px-4 pt-3 text-xs font-medium text-bad">
+                {t.unreadTitle}
               </p>
-              <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
+              <p className="px-4 pb-3 pt-1 text-xs leading-relaxed text-muted">
                 {uploadError}
               </p>
             </div>
           ) : null}
 
           {startError ? (
-            <div className="border border-red-c/60">
-              <p className="border-b border-red-c/40 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-red-c">
-                not started
+            <div className="rounded-card border border-bad/25 bg-bad/5">
+              <p className="px-4 pt-3 text-xs font-medium text-bad">
+                {t.notStarted}
               </p>
-              <p className="px-3 py-2 text-[11px] leading-relaxed text-muted">
+              <p className="px-4 pb-3 pt-1 text-xs leading-relaxed text-muted">
                 {startError.message}
               </p>
             </div>
           ) : null}
 
           {active?.status === RenderStatus.Failed ? (
-            <div className="border border-red-c/60">
-              <p className="border-b border-red-c/40 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-red-c">
-                render failed
+            <div className="rounded-card border border-bad/25 bg-bad/5">
+              <p className="px-4 pt-3 text-xs font-medium text-bad">
+                {t.failed}
               </p>
-              <pre className="max-h-72 overflow-auto px-3 py-2 text-[11px] leading-relaxed text-muted whitespace-pre-wrap break-all">
-                {active.error ?? "No reason was recorded."}
+              <pre className="max-h-72 overflow-auto px-4 pb-3 pt-1 text-[11px] leading-relaxed text-muted whitespace-pre-wrap break-all">
+                {active.error ?? t.noReason}
               </pre>
             </div>
           ) : null}
@@ -492,7 +516,7 @@ export default function Home() {
                 // Without this iOS Safari hijacks playback into fullscreen.
                 playsInline
                 preload="metadata"
-                className="w-full border border-rule bg-black"
+                className="w-full rounded-card bg-black shadow-soft"
               />
               <VideoActions
                 url={active.url}
@@ -502,13 +526,15 @@ export default function Home() {
               />
             </>
           ) : (
-            <div className="flex aspect-video flex-col items-center justify-center gap-4 border border-rule px-8">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted">
+            <div className="flex aspect-video flex-col items-center justify-center gap-4 rounded-card bg-panel px-8 shadow-soft">
+              <p className="text-sm text-muted">
                 {reading
-                  ? "reading the problem…"
-                  : busy
-                    ? "rendering…"
-                    : "no video yet"}
+                  ? t.readingProblem
+                  : queued
+                    ? t.waiting
+                    : busy
+                      ? t.rendering
+                      : t.noVideo}
               </p>
               {busy ? <ProgressBar /> : null}
             </div>
@@ -525,8 +551,8 @@ export default function Home() {
  */
 function ProgressBar() {
   return (
-    <div className="h-px w-full max-w-sm overflow-hidden bg-rule">
-      <div className="h-full w-1/3 animate-[durslel-sweep_1.4s_ease-in-out_infinite] bg-yellow-e" />
+    <div className="h-1 w-full max-w-sm overflow-hidden rounded-full bg-tint">
+      <div className="h-full w-1/3 animate-[durslel-sweep_1.4s_ease-in-out_infinite] rounded-full bg-accent" />
     </div>
   );
 }
@@ -542,14 +568,16 @@ function VideoActions({
   copied: boolean;
   setCopied: (v: boolean) => void;
 }) {
+  const t = useT();
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <a
         href={`${url}?download=1`}
         download={`${jobId}.mp4`}
-        className="border border-rule px-3 py-1.5 text-[11px] uppercase tracking-[0.15em] text-ink hover:border-green-c hover:text-green-c"
+        className="rounded-full border border-rule bg-panel px-3 py-1.5 text-xs text-ink hover:text-accent-ink"
       >
-        Download mp4
+        {t.download}
       </a>
       <button
         type="button"
@@ -570,13 +598,11 @@ function VideoActions({
           setCopied(true);
           setTimeout(() => setCopied(false), 1800);
         }}
-        className={`border px-3 py-1.5 text-[11px] uppercase tracking-[0.15em] ${
-          copied
-            ? "border-green-c text-green-c"
-            : "border-rule text-ink hover:border-blue-d hover:text-blue-d"
+        className={`rounded-full px-3 py-1.5 text-xs ${
+          copied ? "bg-ok/10 text-ok" : "bg-tint text-accent-ink hover:bg-rule"
         }`}
       >
-        {copied ? "Copied" : "Copy link"}
+        {copied ? t.copied : t.copyLink}
       </button>
       {/* The shareable URL, visible so it can be read or hand-copied too. */}
       <code className="min-w-0 flex-1 truncate text-[11px] text-muted">
@@ -597,47 +623,73 @@ function History({
   renders,
   current,
   open,
+  close,
   shown,
 }: {
   renders: RenderSummary[];
   current: string | null;
   open: (id: string, status: RenderStatus) => void;
+  close: () => void;
   shown: boolean;
 }) {
+  const t = useT();
+  const isAdmin = useIsAdmin();
+
   return (
+    // Off-canvas on a phone, a plain column from md up. Visibility rides along with the slide so
+    // a closed drawer is out of the tab order, but only flips once it has finished sliding away.
     <aside
       className={`${
-        shown ? "flex" : "hidden"
-      } w-64 shrink-0 flex-col border-r border-rule bg-panel md:flex`}
+        shown ? "visible translate-x-0" : "invisible -translate-x-full"
+      } fixed inset-y-0 left-0 z-30 flex h-dvh w-full shrink-0 flex-col border-r border-rule bg-panel transition-[translate,visibility] duration-300 ease-out motion-reduce:transition-none md:visible md:static md:z-auto md:w-64 md:translate-x-0 md:transition-none`}
     >
-      <p className="border-b border-rule px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-muted">
-        history
-      </p>
-      <div className="flex-1 overflow-auto">
+      {/* Pinned to the viewport height, so a long history scrolls inside the sidebar instead of
+          stretching the whole page. */}
+      <div className="flex items-center justify-between pl-5 pr-3 pt-3 md:pb-2 md:pr-5 md:pt-4">
+        <p className="text-xs font-medium text-muted">{t.history}</p>
+        {/* The page behind a phone's drawer is not drawn, so the way back has to be in here. */}
+        <button
+          type="button"
+          onClick={close}
+          aria-label={t.close}
+          title={t.close}
+          className="grid size-9 place-items-center rounded-full text-ink hover:bg-tint md:hidden"
+        >
+          <svg viewBox="0 0 16 16" className="size-4" aria-hidden>
+            <path
+              d="M3.5 3.5l9 9M12.5 3.5l-9 9"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col gap-0.5 overflow-auto px-2 pb-2">
         {renders.length === 0 ? (
-          <p className="px-4 py-3 text-[11px] text-rule">no renders yet</p>
+          <p className="px-3 py-2 text-xs text-muted">{t.noRenders}</p>
         ) : (
           renders.map(({ id, title, status, createdAt }) => (
             <button
               key={id}
               type="button"
               onClick={() => open(id, status)}
-              className={`block w-full border-b border-rule/50 px-4 py-2.5 text-left hover:bg-ground ${
-                id === current ? "bg-ground" : ""
+              className={`block w-full rounded-full px-3 py-2 text-left ${
+                id === current ? "bg-tint" : "hover:bg-ground"
               }`}
             >
               <span
                 className={`block truncate text-xs ${
-                  id === current ? "text-blue-d" : "text-ink"
+                  id === current ? "font-medium text-accent-ink" : "text-ink"
                 }`}
               >
                 {title}
               </span>
-              <span className="flex items-center gap-2 text-[10px] text-muted">
+              <span className="flex items-center gap-2 text-[11px] text-muted">
                 {formatDate(createdAt)}
                 {status !== RenderStatus.Ok ? (
                   <span className={STATUS_COLOR[status]}>
-                    {STATUS_TEXT[status]}
+                    {t.status[status]}
                   </span>
                 ) : null}
               </span>
@@ -645,6 +697,14 @@ function History({
           ))
         )}
       </div>
+      {isAdmin ? (
+        <Link
+          href="/admin"
+          className="border-t border-rule px-5 py-3 text-xs font-medium text-muted hover:text-ink md:hidden"
+        >
+          {t.admin}
+        </Link>
+      ) : null}
     </aside>
   );
 }
