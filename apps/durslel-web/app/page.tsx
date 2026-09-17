@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -14,6 +14,7 @@ import {
   useUpsertUserMutation,
   type GetRendersQuery,
 } from "@/generated";
+import { Landing } from "./landing";
 import { useIsAdmin } from "@/lib/admin";
 import { tierLabel } from "@/lib/plans";
 import {
@@ -37,6 +38,10 @@ type RenderSummary = GetRendersQuery["getRenders"][number];
  */
 const STALL_MS = 300_000;
 
+/** What /api/solve can read: a photograph of the problem, a scan, or the PDF itself. */
+const ACCEPTS =
+  "image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf";
+
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -45,6 +50,8 @@ export default function Home() {
   // Reading an uploaded problem. Its own flag rather than a spinner on the render, because
   // nothing is rendering yet and the daily limit has not been touched.
   const [reading, setReading] = useState(false);
+  // A file being dragged over the composer. Only for the highlight that says it will be caught.
+  const [dragging, setDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -266,25 +273,8 @@ export default function Home() {
   // would flash a sign-in prompt at someone who is already signed in.
   if (!isLoaded) return <main className="flex-1" />;
 
-  if (!isSignedIn) {
-    return (
-      <main className="relative flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
-        <div className="absolute right-5 top-3 flex items-center gap-2">
-          <LangToggle />
-          <ThemeToggle />
-        </div>
-        <h1 className="text-4xl font-extrabold tracking-tight">
-          Dur<span className="text-accent">slel</span>
-        </h1>
-        <p className="max-w-sm text-sm text-muted">{t.pitch}</p>
-        <SignInButton mode="modal">
-          <button className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-on-accent shadow-soft hover:bg-accent-strong">
-            {t.signIn}
-          </button>
-        </SignInButton>
-      </main>
-    );
-  }
+  // Everyone else gets the landing page, which is the pitch and the way in.
+  if (!isSignedIn) return <Landing />;
 
   const busy = starting || pending || reading;
   // Counted off the history the sidebar already loaded, so it costs no request and refreshes
@@ -398,7 +388,30 @@ export default function Home() {
             e.preventDefault();
             void run();
           }}
-          className="order-last m-3 flex flex-wrap items-center gap-2 rounded-card border border-rule bg-panel p-2 shadow-soft has-[input:focus-visible]:border-accent md:order-none md:m-0 md:flex-nowrap md:rounded-none md:border-0 md:bg-transparent md:px-5 md:py-4 md:shadow-none"
+          // The composer takes a dragged-in photo or scan as well as a picked one: a problem
+          // already open in another window is dragged here rather than saved and found again.
+          // The page has to refuse the drag for the drop to fire at all — without this the
+          // browser navigates away to the file instead.
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            if (!busy && left !== 0) setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            // Fires for every child the pointer crosses on its way in, so only the one that
+            // leaves the form itself counts.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+              setDragging(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            if (busy || left === 0) return;
+            const file = e.dataTransfer.files[0];
+            if (file) void solve("file", file);
+          }}
+          data-dragging={dragging || undefined}
+          className="order-last m-3 flex flex-wrap items-center gap-2 rounded-card border border-rule bg-panel p-2 shadow-soft has-[input:focus-visible]:border-accent data-dragging:outline-2 data-dragging:outline-dashed data-dragging:outline-accent data-dragging:outline-offset-4 md:order-none md:m-0 md:flex-nowrap md:rounded-none md:border-0 md:bg-transparent md:px-5 md:py-4 md:shadow-none"
         >
           {/* Solves what is typed in the box beside it; with the box empty, asks for a photo or
               scan of the problem instead. Filled and bold so it never reads as another input. */}
@@ -418,7 +431,7 @@ export default function Home() {
           <input
             ref={fileInput}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf"
+            accept={ACCEPTS}
             onChange={(e) => {
               const file = e.target.files?.[0];
               // Cleared immediately: without this, picking the same file again fires no change

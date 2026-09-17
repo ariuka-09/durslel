@@ -59,6 +59,90 @@ const en = {
   noRenders: "No renders yet",
   theme: "Light / dark",
 
+  /** The signed-out landing page. See app/landing.tsx. */
+  landing: {
+    /** Short enough for the header, where the full "Sign in with Google" does not fit a phone. */
+    signIn: "Sign in",
+    headline1: "Write one sentence.",
+    headline2: "Get the animation.",
+    sub: "That sentence is the whole interface.",
+    scrollHint: "Scroll to continue",
+    /** Typed into the composer in scene one, and the render that plays is this prompt's own. */
+    prompt: "explain the Pythagorean theorem proof geometrically",
+    videoAlt:
+      "A geometric proof of the Pythagorean theorem: four copies of the triangle are arranged two ways inside the same square of side a + b, leaving c² one way and a² + b² the other.",
+    /** One per quarter of the render, in the order the video plays them. */
+    caps: [
+      "It draws itself, in order.",
+      "The pieces move to make the point.",
+      "And land on the line you were explaining.",
+      "Every label in the language you teach in.",
+    ],
+    /** ── Scene two: the problem that was photographed rather than typed. ── */
+    dropHead1: "Nothing to type?",
+    dropHead2: "Drop the problem in.",
+    /** Under the composer, where the scroll hint sits in scene one. */
+    dropHint: "A photo or a PDF — Durslel reads it",
+    /** On the page that is dragged in, and above the render it came back as. */
+    problem: "∫ (4x⁶ − 2x³ + 7x − 4) dx",
+    problemTask: "Find the indefinite integral.",
+    file: "problem-3.jpg",
+    videoAlt2:
+      "The integral of 4x⁶ − 2x³ + 7x − 4 worked one term at a time with the power rule, ending on the boxed answer plus C.",
+    /** One per quarter of the second render, in the order the video plays them. */
+    caps2: [
+      "It reads the problem off the page.",
+      "Then works it, a step at a time.",
+      "Naming the rule it used as it goes.",
+      "And lands on the answer, boxed.",
+    ],
+
+    /** ── Scene three: the same sentence, rendered with the switch on each language. ── */
+    langHead: "Same sentence. Your language.",
+    /** One per render, in the order the switch plays them. */
+    langCaps: [
+      "Switch on EN: every label comes back in English.",
+      "Switch on MN: the same sentence, labelled in Mongolian.",
+    ],
+    /** Under the captions: without it a reader expects a finished video to follow the switch. */
+    langNote:
+      "* Pick the language before you press Render. A finished video keeps its language.",
+    langAltEn: "The Pythagorean theorem proof, with every label in English.",
+    langAltMn:
+      "The same Pythagorean theorem proof, with every label in Mongolian.",
+
+    /** The closing pitch, after the render scene has played out. */
+    better: "Better with Durslel.",
+    signUp: "Sign up",
+    /** The last line on the page, under the way in. */
+    freeDaily: (n: number) => `Sign up and make ${n} videos free, every day`,
+    photo:
+      "Nothing to type? Photograph the problem or upload the PDF. Durslel reads it, solves it, and animates the solution.",
+    privacy: "Privacy",
+  },
+
+  /** The chalkboard landing at /test-landing. See app/test-landing/. */
+  chalk: {
+    welcome: "Welcome to Durslel",
+    scroll: "keep scrolling",
+    letsLead: "Durslel lets you",
+    verbs: ["create", "teach", "learn"],
+    /** Empty in Mongolian, where the adverb sits in the lead instead. */
+    letsTail: "easily.",
+    benefits: [
+      "Two hours of animating, gone.",
+      "Your class watches the idea instead of picturing it.",
+      "One sentence in. A finished mp4 out.",
+      "Every label in it is written in the language you teach in.",
+    ],
+    /** Typed into the mock composer as the reader scrolls. */
+    makePrompt: "explain the Pythagorean theorem",
+    equation: "a² + b² = c²",
+    figureAlt:
+      "A right triangle with a square drawn on each of its three sides, the two smaller squares together matching the largest.",
+    start: "Start now",
+  },
+
   back: "Back",
   plansIntro: (free: number) =>
     `Each plan is 30 days, paid once — nothing renews on its own. A free account gets ${free} renders a day; the count resets at midnight GMT+8. Payment goes through Wire: scan the QR with your bank app, or open the app straight from the checkout page.`,
@@ -117,6 +201,73 @@ const mn: typeof en = {
   copyLink: "Холбоос хуулах",
   noRenders: "Одоогоор бичлэг алга",
   theme: "Цайвар / бараан горим",
+
+  landing: {
+    signIn: "Нэвтрэх",
+    headline1: "Ганц өгүүлбэрээр",
+    headline2: "Хичээлээ тайлбарла.",
+    sub: "Тэр өгүүлбэр л бүх интерфейс.",
+    scrollHint: "Доош гүйлгэнэ үү",
+    prompt: "Пифагорын теоремын баталгааг геометрээр тайлбарла",
+    videoAlt:
+      "Пифагорын теоремын геометр баталгаа: a + b талтай квадрат дотор дөрвөн ижил гурвалжныг хоёр янзаар байрлуулахад үлдэх талбай нэг удаа c², нөгөө удаа a² + b² болно.",
+    caps: [
+      "Дарааллан өөрөө зурагдана.",
+      "Хэсгүүд нь санааг харуулахаар шилжинэ.",
+      "Бичлэг таны сонгосон хэлээр гарч ирнэ.",
+      "Хүссэн хичээл хоромхон зуурт.",
+    ],
+    dropHead1: "Бодлого бодуулах уу?",
+    dropHead2: "Файлаар оруулж болно.",
+    dropHint: "Зураг эсвэл PDF — Durslel уншина",
+    problem: "∫ (4x⁶ − 2x³ + 7x − 4) dx",
+    problemTask: "Тодорхойгүй интегралыг ол.",
+    file: "бодлого-3.jpg",
+    videoAlt2:
+      "4x⁶ − 2x³ + 7x − 4 илэрхийллийн интегралыг зэрэгтийн дүрмээр гишүүн тус бүрд бодож, хүрээлэгдсэн хариу болон + C-гээр төгсгөнө.",
+    caps2: [
+      "Хуудсан дээрх бодлогыг уншина.",
+      "Дараа нь алхам алхамаар бодно.",
+      "Хэрэглэсэн дүрэм бүрийг нэрлэнэ.",
+      "Эцэст нь хариуг гарна.",
+    ],
+
+    langHead: "Бичлэг гаргах хэлээ ч өөрөө сонгоно.",
+    langCaps: [
+      "EN сонговол бүх бичиг англиар гарна.",
+      "MN сонговол адилхан санааг монголоор дүрслэнэ.",
+    ],
+    langNote:
+      "* Дүрслэх товчийг дарахаас өмнө хэлээ сонгоно уу. Гарсан бичлэгийн хэл дараа нь солигдохгүй.",
+    langAltEn: "Пифагорын теоремын баталгаа, бүх бичиг нь англиар.",
+    langAltMn: "Пифагорын теоремын мөн адил баталгаа, бүх бичиг нь монголоор.",
+
+    better: "Durslel-тэй илүү дээр.",
+    signUp: "Бүртгүүлэх",
+    freeDaily: (n) => `Бүртгэл үүсгээд өдөр бүр ${n}н бичлэг үнэгүй гаргаж болно`,
+    photo:
+      "Бичих юмгүй юу? Бодлогоо зургаар нь авах эсвэл PDF-ээ оруулаарай. Durslel уншиж, бодож, хариуг нь хөдөлгөөнт дүрслэл болгоно.",
+    privacy: "Нууцлал",
+  },
+
+  chalk: {
+    welcome: "Durslel-д тавтай морил",
+    scroll: "гүйлгээрэй",
+    letsLead: "Durslel-ээр та амархан",
+    verbs: ["бүтээнэ", "заана", "сурна"],
+    letsTail: "",
+    benefits: [
+      "Бичлэг бүрт хоёр цаг хэмнэнэ.",
+      "Сурагчид ойлголтыг төсөөлөхийн оронд харна.",
+      "Нэг өгүүлбэр оруулна. Бэлэн бичлэг гарна.",
+      "Доторх бичиг нь таны заадаг хэлээр.",
+    ],
+    makePrompt: "Пифагорын теоремыг тайлбарла",
+    equation: "a² + b² = c²",
+    figureAlt:
+      "Тэгш өнцөгт гурвалжин, гурван тал бүр дээрээ квадраттай; бага хоёр нь томыгоо дүүрнэ.",
+    start: "Дүрслэж эхлэх",
+  },
 
   back: "Буцах",
   plansIntro: (free) =>

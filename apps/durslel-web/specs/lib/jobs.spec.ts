@@ -1,5 +1,6 @@
 import {
   FREE_DAILY_LIMIT,
+  byDay,
   byMonth,
   dayStart,
   formatDate,
@@ -79,6 +80,22 @@ describe('byMonth', () => {
       '2025-12',
       '2026-01',
     ]);
+  });
+});
+
+describe('byDay', () => {
+  const at = (year: number, month: number, day = 1) => +new Date(year, month - 1, day, 12);
+
+  it('counts each series into every day of a past month, and nothing outside it', () => {
+    const rows = byDay([[at(2026, 2, 3), at(2026, 2, 3), at(2026, 3, 1)], [at(2026, 2, 28)]], '2026-02', at(2026, 9, 1));
+
+    expect(rows).toHaveLength(28);
+    expect(rows[2]).toEqual({ key: '2026-02-03', counts: [2, 0] });
+    expect(rows[27]).toEqual({ key: '2026-02-28', counts: [0, 1] });
+  });
+
+  it('stops the month in progress at today', () => {
+    expect(byDay([[]], '2026-09', at(2026, 9, 16)).map((r) => r.key).at(-1)).toBe('2026-09-16');
   });
 });
 

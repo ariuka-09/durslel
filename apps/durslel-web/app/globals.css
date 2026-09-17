@@ -1,3 +1,7 @@
+/* Clerk's styles go in a layer of their own below utilities, so the Tailwind classes app/layout.tsx
+   hands the sign-in modal through `appearance.elements` beat Clerk's defaults. `properties` is
+   Tailwind's own first layer, named so this line does not push it above utilities. */
+@layer properties, theme, base, clerk, components, utilities;
 @import "tailwindcss";
 
 /* GIP is the house typeface, self-hosted the way the monorepo apps serve it. Only the four
@@ -62,6 +66,11 @@
   /* Accent as text: on --tint, and wherever small type needs the brand colour. */
   --accent-ink: light-dark(#5e4499, #cbb8f7);
   --tint: light-dark(#efe8fa, #2c2540);
+  /* Clerk's primary colour, set here rather than as colorPrimary in app/layout.tsx. Clerk's
+     button declares its own --accent from that value, so var(--accent) there becomes
+     `--accent: var(--accent)` — a cycle, and a button with no background. Resolved at :root it
+     reaches the button as a colour. */
+  --clerk-color-primary: var(--accent);
 
   /* Render states. Queued is kept apart from rendering: nothing is happening yet, and the two
      are a second apart on screen when a burst arrives. */
@@ -170,3 +179,340 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(300%); }
 }
+
+/*
+ * ── Landing page ──────────────────────────────────────────────────────────────
+ *
+ * The signed-out page writes a prompt, presses Render, and opens out of that button onto the
+ * render it asked for. Scroll is the playhead — app/landing.tsx pins each scene and writes the
+ * variables below as the reader moves.
+ *
+ * The three defaults above the click are the *finished* frame, so a reader who asked for less
+ * motion, or whose JavaScript never ran, sees a written prompt rather than an empty box. The
+ * engine only ever takes them back to zero once it knows it is allowed to animate.
+ */
+@property --type { syntax: "<number>"; inherits: true; initial-value: 1; }
+@property --go { syntax: "<number>"; inherits: true; initial-value: 1; }
+@property --p { syntax: "<number>"; inherits: true; initial-value: 1; }
+/* The three that belong to the click rather than the drawing, so they start at rest, not
+   finished: with no engine there is no pointer and no handoff to play. */
+@property --cursor { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --press { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --open { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --film { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --play { syntax: "<number>"; inherits: true; initial-value: 0; }
+/* Scene two's drag. --drag and --file start finished for the same reason --type does: with no
+   engine the page has already landed and the box already holds the file. --drop is the fall into
+   the box, which only an engine can play, so it starts at rest. */
+@property --drag { syntax: "<number>"; inherits: true; initial-value: 1; }
+@property --drop { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --file { syntax: "<number>"; inherits: true; initial-value: 1; }
+/* Scene three's switch: 0 is EN, 1 is MN. */
+@property --lang { syntax: "<number>"; inherits: true; initial-value: 0; }
+
+.landing {
+  /* The lights-down colour of the render scene. Deeper than --ground in either scheme, so the
+     scene reads as a canvas rather than as the page continuing. */
+  --night-bg: light-dark(#0d0a13, #06050a);
+  /* Ink for whatever sits on that canvas, switched in one step by [data-night] rather than
+     interpolated: a text colour crossing the background's lightness disappears halfway. */
+  --stage-ink: var(--ink);
+  --stage-muted: var(--muted);
+  --stage-rule: var(--rule);
+  /* How far through the render the reader has scrolled, and the bar that says the render is
+     coming. The brand colour on the light side of itself, because it only appears against the
+     night. */
+  --sweep-ink: #b39ae8;
+
+  color: var(--stage-ink);
+}
+
+.landing [data-night="1"] {
+  /* The whole track, not just the stage pinned inside it: svh lands the stage's box on a
+     fractional pixel, and a half-pixel of paper between it and the scene above reads as a seam
+     drawn across the handoff. */
+  background: var(--night-bg);
+  --stage-ink: #ece7f3;
+  --stage-muted: #a69db3;
+  --stage-rule: #322b3d;
+  /* Re-stated, not inherited: `color` resolves where it is declared, so a descendant that
+     redefines the token has to claim the colour again or it keeps the paper ink. */
+  color: var(--stage-ink);
+}
+
+.night-muted { color: var(--stage-muted); }
+
+/* Without the engine: scenes are ordinary stacked blocks. With it: a tall track and a stage
+   pinned inside it. `overflow: clip` rather than `hidden` — `hidden` on an ancestor breaks the
+   sticky positioning that does the pinning. */
+/* Shared by every pinned page — the landing and the chalkboard at /test-landing. */
+.stage { padding-block: 12svh; }
+[data-motion="1"] .scene { position: relative; height: calc(var(--length) * 1svh); }
+[data-motion="1"] .stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  padding-block: 1.5rem;
+  overflow: clip;
+}
+
+/* The prompt typing itself in. Mono, so a clip at a fraction of the width lands exactly on a
+   character boundary and the caret sits in the gap rather than through a glyph. */
+.typed { position: relative; display: inline-block; white-space: nowrap; }
+.typed > span { display: inline-block; clip-path: inset(0 calc((1 - var(--type)) * 100%) 0 0); }
+.typed::after {
+  content: "";
+  position: absolute;
+  top: 0.05em;
+  bottom: 0.05em;
+  left: calc(var(--type) * 100%);
+  width: 2px;
+  background: var(--accent);
+}
+@keyframes durslel-caret { 50% { opacity: 0; } }
+.landing[data-motion="1"] .typed::after { animation: durslel-caret 1.1s steps(1) infinite; }
+
+/* Captions over the render. One at a time while pinned; all of them, as a list, when they are
+   the only account of the scene a reader is getting. */
+.caps { display: grid; }
+/* Stacked as a list when there is no scrolling to reveal them one at a time. */
+.landing:not([data-motion="1"]) .caps { gap: 0.15em; }
+/* Nothing to scroll through, so nothing to say about scrolling. */
+.landing:not([data-motion="1"]) .hint { display: none; }
+
+/* The scroll hint's chevron. The hint is the only instruction the page gives and a line of type
+   under the composer is easy to read past, so the arrow keeps moving in the direction the reader
+   is being asked to go. It rides the sine rather than a linear
+   translate — the turns at either end are what make it read as breathing rather than as a
+   ticking sprite. Only ever rendered when the engine is running, so a reader who asked for less
+   motion never meets it. */
+@keyframes durslel-nudge {
+  0%, 100% { transform: translateY(-0.2rem); }
+  50% { transform: translateY(0.35rem); }
+}
+/* The answer to a reader typing at, or clicking on, a composer that is only a picture of one: the
+   whole hint, arrow and all, wiggles the attempt off the way a locked field does. One shot per key
+   or click — app/landing.tsx restarts it. On the <p> rather than its children, because the arrow's
+   transform is already spoken for by the nudge. */
+@keyframes durslel-shake {
+  0%, 100% { transform: none; }
+  15% { transform: translateX(-0.5rem) rotate(-5deg) scale(1.12); }
+  35% { transform: translateX(0.45rem) rotate(4deg) scale(1.12); }
+  55% { transform: translateX(-0.3rem) rotate(-3deg) scale(1.08); }
+  75% { transform: translateX(0.15rem) rotate(1.5deg) scale(1.04); }
+}
+.hint.is-keyed { animation: durslel-shake 500ms ease-in-out; }
+
+/* The free-renders line at the foot of the page: a soft, idle wiggle, still most of the loop so it
+   reads as a nudge rather than a shake. Motion-gated like the hint. */
+@keyframes durslel-wiggle {
+  0%, 60%, 100% { transform: rotate(0); }
+  68% { transform: rotate(-2.5deg); }
+  76% { transform: rotate(2deg); }
+  84% { transform: rotate(-1.2deg); }
+  92% { transform: rotate(0.6deg); }
+}
+.landing[data-motion="1"] .free-daily > button { animation: durslel-wiggle 2.8s ease-in-out infinite; }
+
+.hint svg {
+  width: 2.75rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: durslel-nudge 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+/* The video has no pinned stage to be bounded by, so it is bounded here instead. */
+.landing:not([data-motion="1"]) .stage video { max-height: 70svh; }
+.cap { grid-area: 1 / 1; opacity: 0; transform: translateY(0.3em); transition: opacity 350ms ease, transform 350ms ease; }
+.cap.is-on { opacity: 1; transform: none; }
+.landing:not([data-motion="1"]) .cap { grid-area: auto; opacity: 1; transform: none; }
+
+/* How far through the render the reader is. manim cannot report this; scrolling can. */
+.progress { height: 2px; background: var(--stage-rule); }
+.progress > span { display: block; height: 100%; background: var(--sweep-ink); transform-origin: left; }
+
+/* The stage holds two layers in the same box — the composer on paper, and the night the press
+   opens — so the wait can become the render without either of them moving. */
+.ask-layer, .morph, .wait, .film { position: absolute; inset: 0; }
+.ask-layer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  padding-inline: 1.25rem;
+}
+.wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding-inline: 2rem;
+}
+.film {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 1rem;
+  padding: 1.5rem 0.75rem;
+}
+@media (width >= 768px) { .film { gap: 1.5rem; padding-inline: 2.5rem; } }
+/* The wait's handover to the render is timed, not scrolled — see hold() in app/landing.tsx. */
+.scene { transition: --film 0.5s ease-out; }
+.scene[data-film="1"] { --film: 1; }
+
+/* The pointer that presses Render. Parked on the button and offset back out of the card by
+   (1 - --cursor), so it lands wherever the button is — which is its own row once the composer
+   wraps on a phone. */
+.cursor {
+  position: absolute;
+  left: 52%;
+  top: 56%;
+  width: 1.35rem;
+  fill: var(--ink);
+  stroke: var(--ground);
+  stroke-width: 1.1;
+  pointer-events: none;
+  opacity: calc(var(--cursor) * 4);
+  transform: translate(calc((1 - var(--cursor)) * 7rem), calc((1 - var(--cursor)) * 6rem))
+    scale(calc(1 - var(--press) * 0.18));
+}
+
+/* ── Scene two: the photographed problem ──────────────────────────────────────
+ *
+ * The page is dragged in from off the stage, dropped on the composer, and read. It carries its
+ * own paper and ink rather than the theme's: it is a photograph of something already printed, so
+ * it stays a white page whichever way the site is set.
+ */
+.shot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: min(21rem, 74vw);
+  padding: 1.15rem 1.2rem 1.5rem;
+  border-radius: 0.5rem;
+  background: #fbf8f1;
+  color: #171512;
+  box-shadow: 0 1.1rem 2.2rem rgb(0 0 0 / 0.3);
+  /* Off the bottom-right corner it came from, so the lift reads as a hand and not a zoom. */
+  transform-origin: 70% 100%;
+  transform:
+    translate(calc((1 - var(--drag)) * 60vw), calc((1 - var(--drag)) * 62svh + var(--drop) * 6rem))
+    rotate(calc((1 - var(--drag)) * 9deg))
+    scale(calc(1 + (1 - var(--drag)) * 0.14 - var(--drop) * 0.72));
+  opacity: calc(1 - var(--drop));
+}
+/* Ruled, faintly, so it reads as a page rather than as another card in the interface. */
+.shot::before {
+  content: "";
+  position: absolute;
+  inset: 1rem 1rem 0.8rem;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 1.55rem,
+    rgb(23 21 18 / 0.07) 1.55rem 1.6rem
+  );
+  pointer-events: none;
+}
+.shot-task { font-size: 0.8rem; opacity: 0.6; }
+.shot-sum { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.01em; }
+
+/* The composer answering a file instead of a sentence: outlined while the page is over it, and
+   back to an ordinary box once the file is in. */
+.drop-box {
+  outline: 2px dashed
+    color-mix(in oklab, var(--accent) calc(var(--drag) * (1 - var(--file)) * 100%), transparent);
+  outline-offset: 4px;
+}
+/* Mono, because it is a filename. It reserves its line while it is invisible, so the composer
+   does not gain a row the moment the file lands in it. */
+.file-chip {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  line-height: 1.5rem;
+  color: var(--accent-ink);
+}
+.landing:not([data-motion="1"]) .drop-box { outline: none; }
+
+/* ── Scene three: one sentence, both languages ────────────────────────────────── */
+
+/* The header's switch, drawn large. The thumb slides on --lang and each label takes the on-accent
+   ink as the thumb arrives under it. */
+.lang-pill {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  height: 2.75rem;
+  padding: 0.25rem;
+  border: 1px solid var(--stage-rule);
+  border-radius: 9999px;
+  font-size: 1rem;
+  font-weight: 500;
+}
+.lang-pill::before {
+  content: "";
+  position: absolute;
+  inset-block: 0.25rem;
+  left: 0.25rem;
+  width: calc(50% - 0.25rem);
+  border-radius: 9999px;
+  background: var(--accent);
+  transform: translateX(calc(var(--lang) * 100%));
+}
+.lang-pill > span { position: relative; padding-inline: 1.4rem; text-align: center; }
+.lang-pill > :first-child {
+  color: color-mix(in oklab, var(--on-accent) calc((1 - var(--lang)) * 100%), var(--stage-muted));
+}
+.lang-pill > :last-child {
+  color: color-mix(in oklab, var(--on-accent) calc(var(--lang) * 100%), var(--stage-muted));
+}
+/* The pointer everywhere else rests on paper; this one works on the night. */
+.landing [data-night="1"] .cursor { fill: var(--stage-ink); stroke: var(--night-bg); }
+
+/* The two renders, and the two captions, each stacked in one cell and swapped on --lang. */
+.lang-pair { display: grid; place-items: center; }
+.lang-pair > * { grid-area: 1 / 1; }
+.lang-pair > :first-child { opacity: calc(1 - var(--lang)); }
+.lang-pair > :last-child { opacity: var(--lang); }
+/* No engine, no switch to flip: both renders and both captions, one after the other. */
+.landing:not([data-motion="1"]) .lang-pair { gap: 1rem; }
+.landing:not([data-motion="1"]) .lang-pair > * { grid-area: auto; opacity: 1; }
+.landing:not([data-motion="1"]) .lang-pill { display: none; }
+
+/* The handoff: the press turns the button itself into the render. The night starts as the
+   button's own box — measured onto --btn-* in app/landing.tsx, because the button moves when the
+   composer wraps — and grows from there until it is the whole stage. The scene below is painted
+   in the same --night-bg, so when this stage finally scrolls away there is nothing to see
+   happening: the reader is already inside the video. */
+.morph {
+  position: absolute;
+  inset: 0;
+  opacity: calc(var(--open) * 24);
+  clip-path: inset(
+    calc((1 - var(--open)) * var(--btn-t, 50%))
+    calc((1 - var(--open)) * var(--btn-r, 50%))
+    calc((1 - var(--open)) * var(--btn-b, 50%))
+    calc((1 - var(--open)) * var(--btn-l, 50%))
+    round calc((1 - var(--open)) * 2rem)
+  );
+}
+
+/* No engine: the two layers stop being layers and become two blocks, the composer as a picture
+   and then the render with its own controls. Nothing is pressed, so nothing is waiting. */
+.landing:not([data-motion="1"]) .ask-layer,
+.landing:not([data-motion="1"]) .morph,
+.landing:not([data-motion="1"]) .film {
+  position: static;
+  opacity: 1;
+  clip-path: none;
+}
+.landing:not([data-motion="1"]) .film { padding-block: 2rem; }
+.landing:not([data-motion="1"]) .cursor,
+.landing:not([data-motion="1"]) .wait { display: none; }
