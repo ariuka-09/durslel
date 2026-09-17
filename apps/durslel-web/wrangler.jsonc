@@ -20,7 +20,13 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "main": "worker/app.ts",
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // run_worker_first: public/videos goes through worker/public-video.ts, because static assets
+  // ignore Range and a video that cannot be seeked cannot be scrubbed by the landing page.
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+    "run_worker_first": ["/videos/*"]
+  },
   "observability": { "enabled": true },
 
   // `wrangler dev` runs with no --env: test bucket and test service, never production.

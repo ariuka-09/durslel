@@ -120,6 +120,36 @@ export function byMonth(
 }
 
 /**
+ * byMonth's counting, one bucket per day of `month` ("2026-09") — what the chart draws once a
+ * month is picked. Keys are "2026-09-03". The month in progress stops at today, for the same
+ * reason byMonth stops at now: a day that hasn't happened isn't a quiet one.
+ */
+export function byDay(
+  series: number[][],
+  month: string,
+  now: number = Date.now(),
+): { key: string; counts: number[] }[] {
+  const [year, index] = month.split("-").map(Number);
+  const dayKey = (ms: number) =>
+    `${monthKey(ms)}-${String(new Date(ms).getDate()).padStart(2, "0")}`;
+  const counted = series.map((s) =>
+    s.reduce((m, ms) => m.set(dayKey(ms), (m.get(dayKey(ms)) ?? 0) + 1), new Map<string, number>()),
+  );
+  const rows: { key: string; counts: number[] }[] = [];
+
+  for (
+    const cursor = new Date(year, index - 1, 1);
+    cursor.getMonth() === index - 1 && +cursor <= now;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const key = dayKey(+cursor);
+    rows.push({ key, counts: counted.map((m) => m.get(key) ?? 0) });
+  }
+
+  return rows;
+}
+
+/**
  * How many renders an account gets a day, and when the day turns over.
  *
  * Mirrors the startRender resolver in durslel-service, which is what actually enforces this —

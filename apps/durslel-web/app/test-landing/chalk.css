@@ -1,0 +1,271 @@
+/*
+ * The chalkboard landing: a classroom board that the reader writes on by scrolling.
+ *
+ * Every variable below defaults to the finished state, the same way the main landing works — a
+ * reader who asked for less motion, or whose JavaScript never ran, gets a written-out board
+ * rather than a blank one, and the engine takes the values back to zero only when it may.
+ */
+
+@property --write {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --erase {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --seg {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 2;
+}
+@property --local {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --in {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --zoomp {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --cx {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 88;
+}
+@property --cy {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --cursor {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --click {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --load {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --tri {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --sq {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --eq {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --k {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --i {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+.board {
+  --chalk: #eceadf;
+  --chalk-soft: rgb(236 234 223 / 0.62);
+  --chalk-faint: rgb(236 234 223 / 0.3);
+  /* Chalk colours, not screen colours: what a teacher actually has in the tray. */
+  --chalk-yellow: #f0d484;
+  --chalk-blue: #9fc9e6;
+  --chalk-green: #a8cf9a;
+
+  color: var(--chalk);
+  background-color: #22302a;
+  /* Slate, lit from the top left, still smeared from the last lesson. The noise is a static
+     background image rather than a live SVG filter, so nothing is re-filtered while scrolling. */
+  background-image:
+    radial-gradient(
+      120% 90% at 18% 12%,
+      rgb(255 255 255 / 0.07),
+      transparent 62%
+    ),
+    radial-gradient(
+      80% 60% at 82% 78%,
+      rgb(255 255 255 / 0.05),
+      transparent 58%
+    ),
+    repeating-linear-gradient(
+      102deg,
+      rgb(255 255 255 / 0.012) 0 2px,
+      transparent 2px 120px
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* Chalk is a soft, slightly bloomed mark — never a crisp digital edge. */
+.chalk-text {
+  font-family: var(--font-chalk), "GIP", cursive;
+  text-shadow: 0 0 12px rgb(236 234 223 / 0.14);
+}
+
+/*
+ * Written and erased by scroll. Both ends clip: the right edge follows the hand writing it, the
+ * left edge follows the eraser going the other way.
+ */
+.written {
+  clip-path: inset(
+    -0.25em calc((1 - var(--write)) * 100%) -0.25em calc(var(--erase) * 100%)
+  );
+}
+
+/*
+ * One word at a time out of a list, from a single continuous position along it. A word whose
+ * turn has not come has a negative local time and so is unwritten; a word whose turn has passed
+ * is past 1 and so is fully erased. No classes to toggle, no measuring.
+ */
+.verb {
+  grid-area: 1 / 1;
+  --local: calc(var(--seg) - var(--i));
+  --write: clamp(0, calc(var(--local) / 0.4), 1);
+  --erase: clamp(0, calc((var(--local) - 0.78) / 0.18), 1);
+}
+
+/* Redrawn under each new word: it resets the moment the word does. */
+.verb-rule {
+  transform: scaleX(clamp(0, calc(var(--local) / 0.4), 1));
+  transform-origin: left;
+}
+
+/* The list beside the demo fills in instead of swapping: it is an argument, not a sequence. */
+.benefit {
+  --shown: clamp(0, calc((var(--seg) - var(--i)) * 2.2), 1);
+  opacity: calc(0.12 + 0.88 * var(--shown));
+  transform: translateY(calc((1 - var(--shown)) * 0.7rem));
+}
+
+/* Squares appear one after another off a single progress value. */
+.square {
+  --w: clamp(0, calc((var(--sq) - var(--k) * 0.2) / 0.5), 1);
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--w));
+  fill-opacity: calc(var(--w) * 0.18);
+}
+
+.stroke-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--tri));
+}
+
+/*
+ * The demo scene plays on its own — it is the one thing on the page the reader does not drive,
+ * because a demo they have to operate is not a demo. Registered properties are what make a
+ * keyframe able to interpolate them at all.
+ */
+@keyframes durslel-figure {
+  0% {
+    --tri: 0;
+    --sq: 0;
+    --eq: 0;
+  }
+  18% {
+    --tri: 1;
+    --sq: 0;
+    --eq: 0;
+  }
+  52% {
+    --tri: 1;
+    --sq: 1;
+    --eq: 0;
+  }
+  68% {
+    --tri: 1;
+    --sq: 1;
+    --eq: 1;
+  }
+  92% {
+    --tri: 1;
+    --sq: 1;
+    --eq: 1;
+  }
+  100% {
+    --tri: 0;
+    --sq: 0;
+    --eq: 0;
+  }
+}
+.figure-loop {
+  animation: durslel-figure 11s linear infinite;
+}
+
+/*
+ * The same figure, drawn twice in two different rooms. On the board it is chalk; inside the app
+ * panel it is ink on paper, in colours that clear 4.5:1 there in both schemes — chalk yellow on a
+ * white panel is barely a mark.
+ */
+.figure-app {
+  --chalk: var(--ink);
+  --chalk-soft: var(--muted);
+  --chalk-blue: light-dark(#2a7396, #7fc3e8);
+  --chalk-green: light-dark(#437f36, #93cf86);
+  --chalk-yellow: light-dark(#946a0c, #e8c46a);
+}
+
+/* The app panel, borrowed from the real app and floated over the board. */
+/* How far the push-in goes. A phone has no room to spare either side of the panel, so it barely
+   moves there; a desktop can afford the lean. */
+.app-panel {
+  --zoom-amt: 0.07;
+}
+@media (min-width: 768px) {
+  .app-panel {
+    --zoom-amt: 0.2;
+  }
+}
+
+.composer-row {
+  container-type: inline-size;
+  position: relative;
+}
+.pointer {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  opacity: var(--cursor);
+  transform: translate(calc(var(--cx) * 1cqw), calc(var(--cy) * 1cqw));
+}
+/* The press, as a ring that leaves the button rather than a colour change nobody would catch. */
+.click-ring {
+  opacity: calc(1 - var(--click));
+  transform: scale(calc(0.4 + var(--click) * 1.6));
+}
+
+.load-bar > span {
+  display: block;
+  height: 100%;
+  transform-origin: left;
+  transform: scaleX(var(--load));
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .figure-loop {
+    animation: none;
+  }
+}

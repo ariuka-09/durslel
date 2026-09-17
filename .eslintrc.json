@@ -1,6 +1,11 @@
 {
   "root": true,
-  "ignorePatterns": ["!**/*", ".next/**/*", "**/drizzle/**", "**/types/generated.ts"],
+  "ignorePatterns": [
+    "!**/*",
+    ".next/**/*",
+    "**/drizzle/**",
+    "**/types/generated.ts"
+  ],
   "plugins": ["@nx"],
   "parser": "@typescript-eslint/parser",
   "overrides": [
@@ -12,12 +17,30 @@
           {
             "enforceBuildableLibDependency": true,
             "allow": [],
-            "depConstraints": [{ "sourceTag": "*", "onlyDependOnLibsWithTags": ["*"] }]
+            "depConstraints": [
+              { "sourceTag": "*", "onlyDependOnLibsWithTags": ["*"] }
+            ]
           }
         ]
       }
     },
-    { "files": ["*.ts", "*.tsx"], "extends": ["plugin:@nx/typescript"], "rules": {} },
-    { "files": ["*.js", "*.jsx"], "extends": ["plugin:@nx/javascript"], "rules": {} }
+    {
+      "files": ["*.ts", "*.tsx"],
+      "extends": ["plugin:@nx/typescript"],
+      "rules": {}
+    },
+    {
+      "files": ["*.js", "*.jsx"],
+      "extends": ["plugin:@nx/javascript"],
+      "rules": {}
+    }
   ]
 }
+
+//line 200 max
+// use arrow function
+// folder structe
+// feature base folder name
+// page.tsx
+// component folder
+// component
